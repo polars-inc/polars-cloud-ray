@@ -1,0 +1,16 @@
+.coverage
+license.json
+.mypy_cache
+pc-cublet*
+pc_cublet*
+polars-on-premises*
+polars_on_premises*
+/*.py
+__pycache__
+.pytest_cache
+.ropeproject
+.ruff_cache
+/*.sh
+tests/assets/*/charts
+uv.lock
+.venv
