@@ -7,7 +7,7 @@ Runs the Polars On-Prem scheduler and workers as [Ray](https://www.ray.io/) acto
 Prerequisites:
 
 - A Polars On-Prem binary accessible on the machine
-- A Polars On-Prem `license.json` file
+- A Polars On-Prem `license.json` file, or a valid service account
 - A Python virtual environment:
 
 ```sh
@@ -29,7 +29,8 @@ ray start \
   --resources='{"head":1}' # pinning
 ```
 
-Note that a few things need to be set up for the Polars On-Prem cluster to function properly:
+Note that a few things need to be set up for the Polars On-Prem cluster to
+function properly:
 
 ```sh
 # path to libpython3.x.so
@@ -133,10 +134,15 @@ with RayClusterContext(config) as ctx:
 ray.shutdown()
 ```
 
-In case Ray is running on a single host, set the `single_host_cluster` configuration attribute to `True` to offsets worker ports and avoid socket collisions.
+In case Ray is running on a single host, set the `single_host_cluster`
+configuration attribute to `True` to offsets worker ports and avoid socket
+collisions.
 
-The actors are running in `detached` mode and survive past the script: on can reconnect with the same `ray.init()` and `cluster` gymnastics from another process.
-To clean all actors and underlying processes, Ray itself needs to be shutdown using the following command:
+The actors are running in `detached` mode and survive past the script: on can
+reconnect with the same `ray.init()` and `cluster` gymnastics from another
+process.
+To clean all actors and underlying processes, Ray itself needs to be shutdown
+using the following command:
 
 ```sh
 ray stop --force
@@ -144,30 +150,47 @@ ray stop --force
 
 ## Autoscaling
 
-A dedicated scaler actor, pinned to the scheduler node, runs an HTTP server to handle scaling requests sent by the underlying binary.
-These requests are relayed to the scheduler actor, which in turn adds or removes Ray worker actors in response.
+A dedicated scaler actor, pinned to the scheduler node, runs an HTTP server to
+handle scaling requests sent by the underlying binary.
+These requests are relayed to the scheduler actor, which in turn adds or removes
+Ray worker actors in response.
 
-Enable it via `PolarsOnPremScalingConfig` on the scheduler, and optionally set `min_workers` and/or `max_workers` on the cluster config to bound how far it may scale.
+Enable it via `PolarsOnPremScalingConfig` on the scheduler, and optionally set
+`min_workers` and/or `max_workers` on the cluster config to bound how far it may
+scale.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
 > [!NOTE]
 > Avoid setting `num_workers=1` if you want queries to ever trigger a scale-up.
 >
-> The current version of the Polars On-Prem binary plans a query as single-node -bypassing the autoscaler entirely- whenever its statically configured worker count (`n_workers`) is `1` or fewer; this configuration attribute is optional however, and the wrapper attribute `num_workers` exposed in this Python package is only sent to the binary when its value is different than `0`.
+> The current version of the Polars On-Prem binary plans a query as single-node
+> -bypassing the autoscaler entirely- whenever its statically configured worker
+> count (`n_workers`) is `1` or fewer; this configuration attribute is optional
+> however, and the wrapper attribute `num_workers` exposed in this Python package
+> is only sent to the binary when its value is different than `0`.
 
 ## Resource requests and limits
 
 Four parameters control resource usage:
 
-- `cpu_max` / `memory_max`: requested by Ray for bin-packing; not enforced at the OS level.
-- `cpu_reserved`: a scheduling/accounting hint reported to the observatory; never enforced.
-- `memory_limit`: enforced by the binary itself via cgroups; but only if a _delegated cgroup subtree is made available_ (_e.g._, inside a container or a scoped `systemd-run`).
+- `cpu_max` / `memory_max`: requested by Ray for bin-packing; not enforced at
+- the OS level.
+- `cpu_reserved`: a scheduling/accounting hint reported to the observatory;\
+- never enforced.
+- `memory_limit`: enforced by the binary itself via cgroups; but only if a
+- _delegated cgroup subtree is made available_ (_e.g._, inside a container or a
+- scoped `systemd-run`).
 
-A plain session/SSH shell does not provide one (everything lives flatly in one cgroup), so `memory_limit` fails outright with the following message:
+A plain session/SSH shell does not provide one (everything lives flatly in one
+cgroup), so `memory_limit` fails outright with the following message:
 
-> Ensure cgroup is mounted and subgroups are delegated, or disable the memory limit in the configuration file.
+> Ensure cgroup is mounted and subgroups are delegated, or disable the memory
+> limit in the configuration file.
 
 ### What "enforced" actually means
 
-Hitting `memory.max` does not by itself kill a process: the kernel attempts direct reclaim and retries, and only resorts to the OOM killer once reclaim genuinely cannot free anything more.
-In practice this usually means throttling to a crawl rather than a hard failure.
+Hitting `memory.max` does not by itself kill a process: the kernel attempts
+direct reclaim and retries, and only resorts to the OOM killer once reclaim
+genuinely cannot free anything more.
+In practice this usually means throttling to a crawl rather than a hard
+failure.

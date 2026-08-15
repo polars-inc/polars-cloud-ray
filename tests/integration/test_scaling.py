@@ -4,7 +4,8 @@ import urllib.request
 
 import pytest
 import ray
-from polars_onprem_ray.actors import SCALER_NAME, WORKER_NAME, list_actor_names
+
+from polars_onprem_ray.actors import SCALER_NAME_PREFIX, WORKER_NAME_PREFIX, list_actor_names
 
 from .conftest import RayClusterFactory, TestQuery
 
@@ -18,7 +19,7 @@ def _wait_for_workers(
     names: set[str] = set()
 
     while time.monotonic() < deadline:
-        names = list_actor_names(cluster_id, WORKER_NAME)
+        names = list_actor_names(cluster_id, WORKER_NAME_PREFIX)
         if len(names) == expected:
             return names
         time.sleep(1)
@@ -32,12 +33,12 @@ def test_upscale(ray_cluster: RayClusterFactory) -> None:
     cluster_id = cluster.config.cluster_id
 
     names = _wait_for_workers(cluster_id, 2)
-    assert names == {f"{WORKER_NAME}-{i}" for i in range(2)}
+    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(2)}
 
     cluster._rescale_worker_pool_to(4)
 
     names = _wait_for_workers(cluster_id, 4)
-    assert names == {f"{WORKER_NAME}-{i}" for i in range(4)}
+    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(4)}
 
 
 def test_downscale_delete(ray_cluster: RayClusterFactory) -> None:
@@ -79,17 +80,17 @@ def test_worker_id_offset(ray_cluster: RayClusterFactory) -> None:
     cluster_id = cluster.config.cluster_id
 
     names = _wait_for_workers(cluster_id, 2)
-    assert names == {f"{WORKER_NAME}-{i}" for i in range(2)}
+    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(2)}
 
     # remove first only, and scale back up; the new worker must not reuse the terminated
     # worker's id
-    cluster._rescale_worker_pool_to(1, keep={f"{WORKER_NAME}-1"})
+    cluster._rescale_worker_pool_to(1, keep={f"{WORKER_NAME_PREFIX}-1"})
     _wait_for_workers(cluster_id, 1)
 
     cluster._rescale_worker_pool_to(2)
 
     names = _wait_for_workers(cluster_id, 2)
-    assert names == {f"{WORKER_NAME}-{i}" for i in range(1, 3)}
+    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(1, 3)}
 
 
 def test_scaling_disabled(ray_cluster: RayClusterFactory) -> None:
@@ -98,8 +99,8 @@ def test_scaling_disabled(ray_cluster: RayClusterFactory) -> None:
         num_workers=1,
     )
 
-    with pytest.raises(ValueError, match=SCALER_NAME):
-        ray.get_actor(SCALER_NAME, namespace=cluster.config.cluster_id)
+    with pytest.raises(ValueError, match=SCALER_NAME_PREFIX):
+        ray.get_actor(SCALER_NAME_PREFIX, namespace=cluster.config.cluster_id)
 
 
 def test_scale_config(ray_cluster: RayClusterFactory) -> None:
@@ -132,4 +133,4 @@ def test_client_autoscaling(
 
     run_query(cluster=cluster, min_workers=2, max_workers=2)
 
-    assert len(list_actor_names(cluster.config.cluster_id, WORKER_NAME)) == 2
+    assert len(list_actor_names(cluster.config.cluster_id, WORKER_NAME_PREFIX)) == 2

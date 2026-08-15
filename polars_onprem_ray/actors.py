@@ -14,14 +14,13 @@ import ray
 import toml
 from ray.actor import ActorHandle
 from ray.util.state import list_actors
+from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
 
 from polars_onprem_ray.config import PolarsOnPremClusterConfig
 
-SCALER_NAME = "scaler"
-SCHEDULER_NAME = "scheduler"
-WORKER_NAME = "worker"
-
-_WORKER_NAME_RE = re.compile(rf"^{WORKER_NAME}-(\d+)$")
+SCALER_NAME_PREFIX = "scaler"
+SCHEDULER_NAME_PREFIX = "scheduler"
+WORKER_NAME_PREFIX = "worker"
 
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
@@ -62,7 +61,7 @@ def _stop_orphans(
             if port is None:
                 continue
             cmdline = process.cmdline()
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
 
         msg = f"Port {port} is already in use by process ID {process.pid} "
@@ -73,7 +72,7 @@ def _stop_orphans(
 
         try:
             stale_config = toml.loads(pathlib.Path(cmdline[3]).read_text())
-        except OSError as exc:
+        except (IndexError, OSError) as exc:
             msg += "but we cannot confirm if it is a stale instance."
             raise RuntimeError(msg) from exc
 
@@ -121,9 +120,49 @@ def list_actor_names(cluster_id: str, prefix: str) -> set[str]:
                 ("ray_namespace", "=", cluster_id),
                 ("state", "=", "ALIVE"),
             ],
+            limit=RAY_MAX_LIMIT_FROM_API_SERVER,
         )
         if isinstance(actor.name, str) and actor.name.startswith(prefix)
     }
+
+
+def resolve_scheduler_name() -> str:
+    return SCHEDULER_NAME_PREFIX
+
+
+def resolve_worker_name(worker_id: int) -> str:
+    return f"{WORKER_NAME_PREFIX}-{worker_id}"
+
+
+def _resolve_worker_name_regex() -> re.Pattern:
+    return re.compile(rf"^{WORKER_NAME_PREFIX}-(\d+)$")
+
+
+def resolve_scaler_name() -> str:
+    return SCALER_NAME_PREFIX
+
+
+def resolve_actor_handles(names: set[str], namespace: str) -> dict[str, ActorHandle]:
+    actors: dict[str, ActorHandle] = {}
+
+    for name in names:
+        try:
+            actors[name] = ray.get_actor(name, namespace=namespace)
+        except ValueError:
+            logger.warning("Actor %s not found, skipping", name)
+
+    return actors
+
+
+def terminate_actors(actors: list[ActorHandle], timeout: float) -> None:
+    if len(actors):
+        try:
+            ray.get([actor.stop.remote() for actor in actors], timeout=timeout)
+        except Exception:
+            logger.exception("One or more actors failed to stop cleanly")
+        finally:
+            for actor in actors:
+                ray.kill(actor)  # no-op if the actor is already gone
 
 
 @ray.remote
@@ -138,11 +177,12 @@ class PolarsOnPremSchedulerActor:
 
         self._config_path: str | None = None
         self._process: subprocess.Popen | None = None
+        self._worker_actor_names: set[str] = set()  # bookkeeping outside of ray
 
         self.start()
 
     def _add_worker(self, worker_id: int) -> None:
-        actor_name = f"{WORKER_NAME}-{worker_id}"
+        actor_name = resolve_worker_name(worker_id)
 
         PolarsOnPremWorkerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
@@ -153,19 +193,17 @@ class PolarsOnPremSchedulerActor:
             memory=self.config.worker.memory_max,
         ).remote(self.config, worker_id, self.scheduler_host)
 
+        self._worker_actor_names.add(actor_name)
+
         logger.info("Requested new worker %s", actor_name)
 
-    def _remove_worker(self, actor_name: str) -> None:
-        try:
-            actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
-        except ValueError:
-            logger.warning("Worker %s not found, ignoring remove request", actor_name)
-            return
+    def _remove_workers(self, worker_actor_names: set[str]) -> None:
+        actors = resolve_actor_handles(worker_actor_names, self.config.cluster_id)
+        terminate_actors(list(actors.values()), self.config.actor_response_timeout)
+        self._worker_actor_names -= worker_actor_names
 
-        ray.get(actor.stop.remote())
-        ray.kill(actor)
-
-        logger.info("Removed worker %s", actor_name)
+        for actor_name in worker_actor_names:
+            logger.info("Removed worker %s", actor_name)
 
     def start(self) -> None:
         """Spawn the scheduler process, if not already running."""
@@ -175,7 +213,7 @@ class PolarsOnPremSchedulerActor:
         _stop_orphans(
             self.config.binary_path,
             self.config.cluster_id,
-            "scheduler",
+            resolve_scheduler_name(),
             [
                 self.config.scheduler.worker_registration_port,
                 self.config.scheduler.client_port,
@@ -207,7 +245,7 @@ class PolarsOnPremSchedulerActor:
 
     def stop(self) -> None:
         """Terminate the scheduler process and clean up."""
-        _stop(self._process, "scheduler")
+        _stop(self._process, resolve_scheduler_name())
         self._process = None
 
         if self._config_path is not None:
@@ -242,10 +280,14 @@ class PolarsOnPremSchedulerActor:
         """Return the OS process ID of the scheduler binary subprocess."""
         return self._process.pid if self._process is not None else None
 
+    def get_worker_names(self) -> set[str]:
+        """Return the worker instances we are currently managing."""
+        return self._worker_actor_names
+
     def get_scaling_status(self) -> dict[str, int | set[str]]:
         """Return the current/desired worker counts and configured bounds."""
         return {
-            "available": list_actor_names(self.config.cluster_id, WORKER_NAME),
+            "available": list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX),
             "desired": self.num_workers,
             "min": self.config.min_workers,
             # unbounded scaling is set to u32::MAX in the rust code, which
@@ -266,43 +308,53 @@ class PolarsOnPremSchedulerActor:
         num_workers
             The number of worker to upscale or downscale to.
         delete
-            Set of worker instances to terminate.
+            Set of worker instances to terminate. Applied before `keep`.
         keep
-            Set of worker instances to keep running, while terminating all the others.
+            Set of worker instances to keep running, while terminating all the others
+            not already removed via `delete`.
 
         """
-        worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME)
-        self.num_workers = num_workers  # new value
+        self._worker_actor_names |= list_actor_names(
+            self.config.cluster_id,
+            WORKER_NAME_PREFIX,
+        )
 
-        if len(worker_names) < num_workers:
+        if len(self._worker_actor_names) < num_workers:
             # offset the id used by each worker to avoid collisions with running worker
             # names
             offset = (
                 max(
                     [
                         int(m.group(1))
-                        for actor_name in worker_names
-                        if (m := _WORKER_NAME_RE.match(actor_name)) is not None
+                        for actor_name in self._worker_actor_names
+                        if (
+                            (m := _resolve_worker_name_regex().match(actor_name))
+                            is not None
+                        )
                     ],
                     default=-1,
                 )
                 + 1
             )
-            for worker_id in range(num_workers - len(worker_names)):
+            for worker_id in range(num_workers - len(self._worker_actor_names)):
                 self._add_worker(worker_id + offset)
 
-        if len(worker_names) > num_workers:
+        elif len(self._worker_actor_names) > num_workers:
             # actor.name is always set to config.worker.instance_id
             if num_workers == 0:
-                for instance_id in worker_names:
-                    self._remove_worker(instance_id)
+                to_remove = set(self._worker_actor_names)
             else:
+                to_remove = set()
+                remaining = self._worker_actor_names
                 if delete is not None:
-                    for instance_id in delete:
-                        self._remove_worker(instance_id)
+                    to_remove |= delete
+                    remaining = remaining - delete
                 if keep is not None:
-                    for instance_id in worker_names - keep:
-                        self._remove_worker(instance_id)
+                    to_remove |= remaining - keep
+
+            self._remove_workers(to_remove)
+
+        self.num_workers = num_workers  # new value
 
 
 @ray.remote
@@ -319,6 +371,7 @@ class PolarsOnPremWorkerActor:
 
         self.worker_id = worker_id
         self.worker_host: str = _resolve_host()
+        self.worker_name: str = ""
         self.scheduler_host = scheduler_host
 
         self._config_path: str | None = None
@@ -331,12 +384,13 @@ class PolarsOnPremWorkerActor:
         if self._process is not None:
             return
 
+        self.worker_name = resolve_worker_name(self.worker_id)
         offset = self.config._worker_port_offset(self.worker_id)
 
         _stop_orphans(
             self.config.binary_path,
             self.config.cluster_id,
-            f"worker-{self.worker_id}",
+            self.worker_name,
             [
                 self.config.worker.task_port + offset,
                 self.config.worker.shuffle_port + offset,
@@ -353,7 +407,7 @@ class PolarsOnPremWorkerActor:
             f.write(toml)
             self._config_path = f.name
 
-        logger.info("Starting worker-%d on %s", self.worker_id, self.worker_host)
+        logger.info("Starting %s on %s", self.worker_name, self.worker_host)
 
         cmd = [self.config.binary_path, "service", "--config-path", self._config_path]
         env = {
@@ -365,11 +419,11 @@ class PolarsOnPremWorkerActor:
         }
 
         self._process = subprocess.Popen(cmd, env=env)
-        logger.info("PID of %s-%d: %d", WORKER_NAME, self.worker_id, self._process.pid)
+        logger.info("PID of %s: %d", self.worker_name, self._process.pid)
 
     def stop(self) -> None:
         """Terminate the worker process and clean up."""
-        _stop(self._process, f"worker-{self.worker_id}")
+        _stop(self._process, self.worker_name)
         self._process = None
 
         if self._config_path is not None:
@@ -396,7 +450,10 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
     # resolve lazily on each call rather than once at construction: the scaler
     # should start before the scheduler actor for the latter to bind to it
     def _scheduler_actor(self) -> ActorHandle:
-        return ray.get_actor(SCHEDULER_NAME, namespace=self.server.cluster_id)
+        return ray.get_actor(
+            resolve_scheduler_name(),
+            namespace=self.server.cluster_id,
+        )
 
     def _respond(self, status: int, payload: dict | None = None) -> None:
         body = json.dumps(payload).encode() if payload is not None else b""
@@ -418,7 +475,10 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            status = ray.get(self._scheduler_actor().get_scaling_status.remote())
+            status = ray.get(
+                self._scheduler_actor().get_scaling_status.remote(),
+                timeout=self.server.actor_response_timeout,
+            )
         except Exception as exc:
             logger.exception("scale_config request failed")
             self._respond(500, {"detail": str(exc)})
@@ -440,7 +500,19 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length)) if length else {}
+
+        try:
+            body = json.loads(self.rfile.read(length)) if length else {}
+        except json.JSONDecodeError:
+            logger.exception("scale_to request failed")
+            self._respond(400, {"detail": "malformed JSON request body"})
+            return
+
+        if "amount" not in body:
+            logger.error("scale_to request failed")
+            self._respond(500, {"detail": "missing 'amount' attribute in request body"})
+            return
+
         keep = set(body.get("workers_to_keep") or []) or None
         delete = set(body.get("workers_to_delete") or []) or None
         logger.info(
@@ -456,7 +528,8 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
                     body["amount"],
                     delete=delete,
                     keep=keep,
-                )
+                ),
+                timeout=self.server.actor_response_timeout,
             )
         except Exception as exc:
             logger.exception("scale_to request failed")
@@ -472,8 +545,14 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
 class _ScalingHTTPServer(http.server.ThreadingHTTPServer):
     """A `ThreadingHTTPServer` that carries the cluster ID to its handlers."""
 
-    def __init__(self, address: tuple[str, int], cluster_id: str) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        cluster_id: str,
+        actor_response_timeout: int,
+    ) -> None:
         self.cluster_id = cluster_id
+        self.actor_response_timeout = actor_response_timeout
         super().__init__(address, _ScalingRequestHandler)
 
 
@@ -484,38 +563,39 @@ class PolarsOnPremScalerActor:
     def __init__(self, config: PolarsOnPremClusterConfig) -> None:
         self.config: PolarsOnPremClusterConfig = config
 
-        self.http_server: _ScalingHTTPServer | None = None
-        self._thread: threading.Thread | None = None
+        self._http_server: _ScalingHTTPServer | None = None
+        self._http_server_thread: threading.Thread | None = None
 
         self.start()
 
     def start(self) -> None:
         """Start the HTTP server, if not already running."""
-        if self.http_server is None:
+        if self._http_server is None:
             # fails with OSError if port is already used
-            self.http_server = _ScalingHTTPServer(
+            self._http_server = _ScalingHTTPServer(
                 ("127.0.0.1", self.config.scheduler.scaling.port),
                 self.config.cluster_id,
+                self.config.actor_response_timeout,
             )
-            self._thread = threading.Thread(
-                target=self.http_server.serve_forever,
+            self._http_server_thread = threading.Thread(
+                target=self._http_server.serve_forever,
                 daemon=True,
             )
-            self._thread.start()
+            self._http_server_thread.start()
 
             logger.info(
                 "Scaler HTTP server listening on 127.0.0.1:%d",
-                self.http_server.server_port,
+                self._http_server.server_port,
             )
 
     def stop(self) -> None:
         """Stop the HTTP server, if running."""
-        if self.http_server is not None:
-            self.http_server.shutdown()
-            self.http_server.server_close()
-            self.http_server = None
-            self._thread = None
+        if self._http_server is not None:
+            self._http_server.shutdown()
+            self._http_server.server_close()
+            self._http_server = None
+            self._http_server_thread = None
 
     def is_ready(self) -> bool:
         """Return whether the HTTP server is listening."""
-        return self.http_server is not None
+        return self._http_server is not None

@@ -5,9 +5,10 @@ import time
 
 import psutil
 import ray
-from polars_onprem_ray.actors import SCHEDULER_NAME, WORKER_NAME
 from ray.actor import ActorHandle
 from ray.util.state import list_actors
+
+from polars_onprem_ray.actors import SCHEDULER_NAME_PREFIX, WORKER_NAME_PREFIX
 
 from .conftest import RayClusterFactory, TestQuery
 
@@ -34,7 +35,7 @@ def _wait_for_worker_restart(
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         try:
-            new_actor_pid = _actor_pid(cluster_id, f"{WORKER_NAME}-0")
+            new_actor_pid = _actor_pid(cluster_id, f"{WORKER_NAME_PREFIX}-0")
         except AssertionError:
             new_actor_pid = None
 
@@ -56,7 +57,7 @@ def test_worker_restart_cleanup(ray_cluster: RayClusterFactory) -> None:
     cluster_id = cluster.config.cluster_id
 
     actor = cluster._worker_actors[0]
-    actor_pid = _actor_pid(cluster_id, f"{WORKER_NAME}-0")
+    actor_pid = _actor_pid(cluster_id, f"{WORKER_NAME_PREFIX}-0")
     binary_pid = ray.get(actor.get_worker_pid.remote())
 
     # killing the actor will orphan the child process
@@ -85,7 +86,7 @@ def test_old_worker_reregister_with_new_scheduler(
     cluster_id = cluster.config.cluster_id
     scheduler_actor = cluster._scheduler_actor
 
-    sched_pid = _actor_pid(cluster_id, SCHEDULER_NAME)
+    sched_pid = _actor_pid(cluster_id, SCHEDULER_NAME_PREFIX)
     binary_pid = ray.get(scheduler_actor.get_scheduler_pid.remote())
 
     # killing the actor will orphan the child process
@@ -100,17 +101,17 @@ def test_old_worker_reregister_with_new_scheduler(
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         try:
-            ray.get_actor(SCHEDULER_NAME, namespace=cluster_id)
+            ray.get_actor(SCHEDULER_NAME_PREFIX, namespace=cluster_id)
         except ValueError:
             break
         time.sleep(2)
     else:
-        msg = f"Ray never deregistered the killed '{SCHEDULER_NAME}' actor"
+        msg = f"Ray never deregistered the killed '{SCHEDULER_NAME_PREFIX}' actor"
         raise AssertionError(msg)
 
     # scheduler is gone, create a fresh one (worker should still be hanging around)
     cluster.start()
-    new_sched_pid = _actor_pid(cluster_id, SCHEDULER_NAME)
+    new_sched_pid = _actor_pid(cluster_id, SCHEDULER_NAME_PREFIX)
     assert new_sched_pid != sched_pid
     time.sleep(2)
 

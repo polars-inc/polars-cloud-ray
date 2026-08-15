@@ -1,4 +1,5 @@
 import pathlib
+import socket
 import typing
 
 import toml
@@ -6,8 +7,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def _resolve_absolute_path(path: str) -> pathlib.Path:
-    """Resolve a local path to an absolute path."""
     return pathlib.Path(path).expanduser().resolve()
+
+
+def _port_available(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+        return True
 
 
 class AbsLocationConfig(BaseModel):
@@ -705,6 +714,10 @@ class PolarsOnPremClusterConfig(BaseModel):
         default=10,
         description="Seconds to wait for the scheduler and workers to become ready.",
     )
+    actor_response_timeout: int = Field(
+        default=10,
+        description="Seconds to wait for actor calls to complete before giving up.",
+    )
 
     # native binary configuration
     cluster_id: str = Field(
@@ -783,6 +796,52 @@ class PolarsOnPremClusterConfig(BaseModel):
     def _worker_port_offset(self, worker_id: int) -> int:
         """Per-worker port offset to avoid collisions when co-located on one host."""
         return worker_id * 2 if self.single_host_cluster else 0
+
+    def _port_availability(
+        self,
+        *,
+        check_scheduler: bool,
+        check_workers: typing.Collection[int],
+        check_scaler: bool,
+    ) -> None:
+        """Raise if needed ports are already taken (only meaningful on single-host)."""
+        if not self.single_host_cluster:
+            return
+
+        ports: dict[str, int] = {}
+
+        if check_scheduler:
+            ports["scheduler.client_port"] = self.scheduler.client_port
+            ports["scheduler.worker_registration_port"] = (
+                self.scheduler.worker_registration_port
+            )
+            if self.scheduler.observatory.enabled:
+                ports["scheduler.observatory.otlp_port"] = (
+                    self.scheduler.observatory.otlp_port
+                )
+                ports["scheduler.observatory.rest_port"] = (
+                    self.scheduler.observatory.rest_port
+                )
+
+        for worker_id in check_workers:
+            offset = self._worker_port_offset(worker_id)
+            ports[f"worker-{worker_id}.task_port"] = self.worker.task_port + offset
+            ports[f"worker-{worker_id}.shuffle_port"] = (
+                self.worker.shuffle_port + offset
+            )
+
+        if check_scaler and self.scheduler.scaling.enabled:
+            ports["scheduler.scaling.port"] = self.scheduler.scaling.port
+
+        taken = [
+            f"{name} ({port})"
+            for name, port in ports.items()
+            if not _port_available("127.0.0.1", port)
+        ]
+
+        if taken:
+            msg = f"Port(s) already in use, aborting: {', '.join(taken)}"
+            raise RuntimeError(msg)
 
     def config_scheduler(self, scheduler_host: str) -> str:
         """Render the TOML configuration of the scheduler node."""

@@ -4,15 +4,19 @@ import time
 import typing
 
 import ray
+from ray.exceptions import GetTimeoutError
 
 from polars_onprem_ray.actors import (
-    SCALER_NAME,
-    SCHEDULER_NAME,
-    WORKER_NAME,
+    WORKER_NAME_PREFIX,
     PolarsOnPremScalerActor,
     PolarsOnPremSchedulerActor,
     PolarsOnPremWorkerActor,
     list_actor_names,
+    resolve_actor_handles,
+    resolve_scaler_name,
+    resolve_scheduler_name,
+    resolve_worker_name,
+    terminate_actors,
 )
 from polars_onprem_ray.config import PolarsOnPremClusterConfig
 
@@ -68,10 +72,19 @@ class PolarsOnPremCluster:
         self._scheduler_actor: typing.Any = None
         self._worker_actors: list[typing.Any] = []
 
+    def _actor_exists(self, name: str) -> bool:
+        try:
+            ray.get_actor(name, namespace=self.config.cluster_id)
+        except ValueError:
+            return False
+        return True
+
     def _start_scheduler(self) -> None:
+        actor_name = resolve_scheduler_name()
+
         try:
             self._scheduler_actor = ray.get_actor(
-                SCHEDULER_NAME,
+                actor_name,
                 namespace=self.config.cluster_id,
             )
         except ValueError:
@@ -81,7 +94,7 @@ class PolarsOnPremCluster:
             return
 
         self._scheduler_actor = PolarsOnPremSchedulerActor.options(  # type: ignore[attr-defined]
-            name=SCHEDULER_NAME,
+            name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
             resources={"head": 0.001},  # pinning
@@ -91,14 +104,18 @@ class PolarsOnPremCluster:
 
     def _start_workers(self) -> None:
         if self._scheduler_actor is None:
-            return
+            msg = "Cannot start workers: scheduler actor is not available."
+            raise RuntimeError(msg)
 
-        scheduler_host = ray.get(self._scheduler_actor.get_host.remote())
+        scheduler_host = ray.get(
+            self._scheduler_actor.get_host.remote(),
+            timeout=self.config.actor_response_timeout,
+        )
 
         worker_actors: list[typing.Any] = []
 
         for worker_id in range(self.config.num_workers):
-            actor_name = f"{WORKER_NAME}-{worker_id}"
+            actor_name = resolve_worker_name(worker_id)
 
             try:
                 actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
@@ -119,9 +136,11 @@ class PolarsOnPremCluster:
         self._worker_actors = worker_actors
 
     def _start_scaler(self) -> None:
+        actor_name = resolve_scaler_name()
+
         try:
             self._scaler_actor = ray.get_actor(
-                SCALER_NAME,
+                actor_name,
                 namespace=self.config.cluster_id,
             )
         except ValueError:
@@ -131,7 +150,7 @@ class PolarsOnPremCluster:
             return
 
         self._scaler_actor = PolarsOnPremScalerActor.options(  # type: ignore[attr-defined]
-            name=SCALER_NAME,
+            name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
             resources={"head": 0.001},  # pinning, same node as the scheduler
@@ -145,11 +164,14 @@ class PolarsOnPremCluster:
         )
 
         deadline = time.monotonic() + self.config.worker_startup_timeout
-        while time.monotonic() < deadline:
-            if ray.get(self._scheduler_actor.is_ready.remote()):
-                logger.info("Scheduler started and listening")
-                return
-            time.sleep(2)
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                if ray.get(self._scheduler_actor.is_ready.remote(), timeout=remaining):
+                    logger.info("Scheduler started and listening")
+                    return
+            except GetTimeoutError:
+                break
+            time.sleep(0.5)
 
         msg = f"Scheduler did not start within {self.config.worker_startup_timeout}s"
         raise RuntimeError(msg)
@@ -164,20 +186,30 @@ class PolarsOnPremCluster:
         pending: dict[int, typing.Any] = dict(enumerate(self._worker_actors))
 
         deadline = time.monotonic() + self.config.worker_startup_timeout
-        while pending and time.monotonic() < deadline:
-            readiness = ray.get([actor.is_ready.remote() for actor in pending.values()])
+        while pending and (remaining := deadline - time.monotonic()) > 0:
+            try:
+                readiness = ray.get(
+                    [actor.is_ready.remote() for actor in pending.values()],
+                    timeout=remaining,
+                )
+            except GetTimeoutError:
+                break
+
             for worker_id, worker_ready in zip(
-                list(pending.keys()), readiness, strict=True
+                list(pending.keys()),
+                readiness,
+                strict=True,
             ):
                 if worker_ready:
-                    logger.info("Worker %s is ready", f"{WORKER_NAME}-{worker_id}")
+                    logger.info("Worker %s is ready", resolve_worker_name(worker_id))
                     pending.pop(worker_id)
+
             if pending:
-                time.sleep(2)
+                time.sleep(0.5)
 
         if pending:
             msg = (
-                f"Workers {[f'{WORKER_NAME}-{worker_id}' for worker_id in pending]} "
+                f"Workers {[resolve_worker_name(worker_id) for worker_id in pending]} "
                 f"did not start within {self.config.worker_startup_timeout}s"
             )
             raise RuntimeError(msg)
@@ -189,11 +221,14 @@ class PolarsOnPremCluster:
         )
 
         deadline = time.monotonic() + self.config.worker_startup_timeout
-        while time.monotonic() < deadline:
-            if ray.get(self._scaler_actor.is_ready.remote()):
-                logger.info("Scaler actor started and listening")
-                return
-            time.sleep(2)
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                if ray.get(self._scaler_actor.is_ready.remote(), timeout=remaining):
+                    logger.info("Scaler actor started and listening")
+                    return
+            except GetTimeoutError:
+                break
+            time.sleep(0.5)
 
         msg = f"Scaler did not start within {self.config.worker_startup_timeout}s"
         raise RuntimeError(msg)
@@ -212,11 +247,22 @@ class PolarsOnPremCluster:
                 num_workers,
                 delete=delete,
                 keep=keep,
-            )
+            ),
+            timeout=self.config.actor_response_timeout,
         )
 
     def start(self) -> None:
         """Start (or reconnect to) our various actors; block until ready."""
+        self.config._port_availability(
+            check_scheduler=not self._actor_exists(resolve_scheduler_name()),
+            check_workers=[
+                worker_id
+                for worker_id in range(self.config.num_workers)
+                if not self._actor_exists(resolve_worker_name(worker_id))
+            ],
+            check_scaler=not self._actor_exists(resolve_scaler_name()),
+        )
+
         if self.config.scheduler.scaling.enabled:
             self._start_scaler()
             self._wait_for_scaler()
@@ -237,61 +283,84 @@ class PolarsOnPremCluster:
 
     def stop(self) -> None:
         """Terminate all the actors (scaler, scheduler, workers)."""
+        try:
+            self._scheduler_actor = ray.get_actor(
+                resolve_scheduler_name(),
+                namespace=self.config.cluster_id,
+            )
+        except ValueError:
+            self._scheduler_actor = None
+
         if self.config.scheduler.scaling.enabled:
             try:
                 self._scaler_actor = ray.get_actor(
-                    SCALER_NAME, namespace=self.config.cluster_id
+                    resolve_scaler_name(),
+                    namespace=self.config.cluster_id,
                 )
             except ValueError:
                 self._scaler_actor = None
 
             if self._scaler_actor is not None:
                 logger.info("Stopping scaler...")
-                ray.get(self._scaler_actor.stop.remote())
-                ray.kill(self._scaler_actor)
+                terminate_actors(
+                    [self._scaler_actor],
+                    self.config.actor_response_timeout,
+                )
                 self._scaler_actor = None
 
-        self._worker_actors = [
-            ray.get_actor(name, namespace=self.config.cluster_id)
-            for name in list_actor_names(self.config.cluster_id, WORKER_NAME)
-        ]
-        if len(self._worker_actors):
-            logger.info("Stopping %d worker(s)...", len(self._worker_actors))
-            ray.get([actor.stop.remote() for actor in self._worker_actors])
-            for actor in self._worker_actors:
-                ray.kill(actor)
-            self._worker_actors = []
+        worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
+        if self._scheduler_actor is not None:
+            try:
+                worker_names |= ray.get(
+                    self._scheduler_actor.get_worker_names.remote(),
+                    timeout=self.config.actor_response_timeout,
+                )
+            except Exception:
+                logger.exception("Could not fetch worker names from the scheduler")
 
-        try:
-            self._scheduler_actor = ray.get_actor(
-                SCHEDULER_NAME, namespace=self.config.cluster_id
-            )
-        except ValueError:
-            self._scheduler_actor = None
+        self._worker_actors = list(
+            resolve_actor_handles(worker_names, self.config.cluster_id).values()
+        )
+        if self._worker_actors:
+            logger.info("Stopping %d worker(s)...", len(self._worker_actors))
+            terminate_actors(self._worker_actors, self.config.actor_response_timeout)
+            self._worker_actors = []
 
         if self._scheduler_actor is not None:
             logger.info("Stopping scheduler...")
-            ray.get(self._scheduler_actor.stop.remote())
-            ray.kill(self._scheduler_actor)
+            terminate_actors(
+                [self._scheduler_actor],
+                self.config.actor_response_timeout,
+            )
             self._scheduler_actor = None
 
         logger.info("Cluster stopped")
 
     def get_client_addr(self) -> str:
         """Return the URI queries should be submitted to."""
-        return (
-            str(ray.get(self._scheduler_actor.get_client_addr.remote()))
-            if self._scheduler_actor is not None
-            else "The scheduler does not appear to be running"
+        if self._scheduler_actor is None:
+            msg = "The scheduler does not appear to be running."
+            raise RuntimeError(msg)
+
+        return str(
+            ray.get(
+                self._scheduler_actor.get_client_addr.remote(),
+                timeout=self.config.actor_response_timeout,
+            )
         )
 
     def get_dashboard_addr(self) -> str:
         """Return the observatory dashboard URL."""
-        return (
-            str(ray.get(self._scheduler_actor.get_dashboard_addr.remote()))
-            if (
-                self._scheduler_actor is not None
-                and self.config.scheduler.observatory.enabled
+        if self._scheduler_actor is None:
+            msg = "The scheduler does not appear to be running."
+            raise RuntimeError(msg)
+
+        if not self.config.scheduler.observatory.enabled:
+            return "The observatory is not enabled on this cluster"
+
+        return str(
+            ray.get(
+                self._scheduler_actor.get_dashboard_addr.remote(),
+                timeout=self.config.actor_response_timeout,
             )
-            else "The observatory is not enabled on this cluster"
         )

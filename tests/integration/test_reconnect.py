@@ -1,6 +1,6 @@
 import ray
 from polars.testing import assert_frame_equal
-from polars_onprem_ray.actors import SCHEDULER_NAME, WORKER_NAME, list_actor_names
+from polars_onprem_ray.actors import SCHEDULER_NAME_PREFIX, WORKER_NAME_PREFIX, list_actor_names
 from polars_onprem_ray.cluster import PolarsOnPremCluster
 
 from .conftest import RayClusterConfigFactory, TestQuery
@@ -16,10 +16,10 @@ def test_reconnect_existing_cluster(
     cluster0 = PolarsOnPremCluster(config)
     cluster0.start()
 
-    scheduler0 = ray.get_actor(SCHEDULER_NAME, namespace=config.cluster_id)
+    scheduler0 = ray.get_actor(SCHEDULER_NAME_PREFIX, namespace=config.cluster_id)
     workers0 = [
         ray.get_actor(actor_name, namespace=config.cluster_id)
-        for actor_name in list_actor_names(config.cluster_id, WORKER_NAME)
+        for actor_name in list_actor_names(config.cluster_id, WORKER_NAME_PREFIX)
     ]
     result0 = run_query(cluster=cluster0)
 
@@ -29,10 +29,10 @@ def test_reconnect_existing_cluster(
     cluster1 = PolarsOnPremCluster(config)
     cluster1.start()
 
-    scheduler1 = ray.get_actor(SCHEDULER_NAME, namespace=config.cluster_id)
+    scheduler1 = ray.get_actor(SCHEDULER_NAME_PREFIX, namespace=config.cluster_id)
     workers1 = [
         ray.get_actor(actor_name, namespace=config.cluster_id)
-        for actor_name in list_actor_names(config.cluster_id, WORKER_NAME)
+        for actor_name in list_actor_names(config.cluster_id, WORKER_NAME_PREFIX)
     ]
     result1 = run_query(cluster=cluster1)
 
