@@ -309,15 +309,6 @@ class PolarsOnPremCluster:
                 self._scaler_actor = None
 
         worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
-        if self._scheduler_actor is not None:
-            try:
-                worker_names |= ray.get(
-                    self._scheduler_actor.get_worker_names.remote(),
-                    timeout=self.config.actor_response_timeout,
-                )
-            except Exception:
-                logger.exception("Could not fetch worker names from the scheduler")
-
         self._worker_actors = list(
             resolve_actor_handles(worker_names, self.config.cluster_id).values()
         )

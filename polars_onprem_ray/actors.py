@@ -118,7 +118,7 @@ def list_actor_names(cluster_id: str, prefix: str) -> set[str]:
             address=ray.get_runtime_context().gcs_address,
             filters=[
                 ("ray_namespace", "=", cluster_id),
-                ("state", "=", "ALIVE"),
+                ("state", "!=", "DEAD"),
             ],
             limit=RAY_MAX_LIMIT_FROM_API_SERVER,
         )
@@ -177,7 +177,6 @@ class PolarsOnPremSchedulerActor:
 
         self._config_path: str | None = None
         self._process: subprocess.Popen | None = None
-        self._worker_actor_names: set[str] = set()  # bookkeeping outside of ray
 
         self.start()
 
@@ -193,14 +192,11 @@ class PolarsOnPremSchedulerActor:
             memory=self.config.worker.memory_max,
         ).remote(self.config, worker_id, self.scheduler_host)
 
-        self._worker_actor_names.add(actor_name)
-
         logger.info("Requested new worker %s", actor_name)
 
     def _remove_workers(self, worker_actor_names: set[str]) -> None:
         actors = resolve_actor_handles(worker_actor_names, self.config.cluster_id)
         terminate_actors(list(actors.values()), self.config.actor_response_timeout)
-        self._worker_actor_names -= worker_actor_names
 
         for actor_name in worker_actor_names:
             logger.info("Removed worker %s", actor_name)
@@ -280,10 +276,6 @@ class PolarsOnPremSchedulerActor:
         """Return the OS process ID of the scheduler binary subprocess."""
         return self._process.pid if self._process is not None else None
 
-    def get_worker_names(self) -> set[str]:
-        """Return the worker instances we are currently managing."""
-        return self._worker_actor_names
-
     def get_scaling_status(self) -> dict[str, int | set[str]]:
         """Return the current/desired worker counts and configured bounds."""
         return {
@@ -312,21 +304,20 @@ class PolarsOnPremSchedulerActor:
         keep
             Set of worker instances to keep running, while terminating all the others
             not already removed via `delete`.
+            If neither `delete` nor `keep` is given, the newest workers (highest
+            worker id) are removed first.
 
         """
-        self._worker_actor_names |= list_actor_names(
-            self.config.cluster_id,
-            WORKER_NAME_PREFIX,
-        )
+        worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
 
-        if len(self._worker_actor_names) < num_workers:
+        if len(worker_names) < num_workers:
             # offset the id used by each worker to avoid collisions with running worker
             # names
             offset = (
                 max(
                     [
                         int(m.group(1))
-                        for actor_name in self._worker_actor_names
+                        for actor_name in worker_names
                         if (
                             (m := _resolve_worker_name_regex().match(actor_name))
                             is not None
@@ -336,16 +327,17 @@ class PolarsOnPremSchedulerActor:
                 )
                 + 1
             )
-            for worker_id in range(num_workers - len(self._worker_actor_names)):
+            for worker_id in range(num_workers - len(worker_names)):
                 self._add_worker(worker_id + offset)
 
-        elif len(self._worker_actor_names) > num_workers:
-            # actor.name is always set to config.worker.instance_id
+        elif len(worker_names) > num_workers:
             if num_workers == 0:
-                to_remove = set(self._worker_actor_names)
+                to_remove = set(worker_names)
+            elif delete is None and keep is None:
+                to_remove = set(list(worker_names)[: len(worker_names) - num_workers])
             else:
                 to_remove = set()
-                remaining = self._worker_actor_names
+                remaining = worker_names
                 if delete is not None:
                     to_remove |= delete
                     remaining = remaining - delete
