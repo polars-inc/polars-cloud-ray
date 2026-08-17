@@ -715,7 +715,7 @@ class PolarsOnPremClusterConfig(BaseModel):
         description="Seconds to wait for the scheduler and workers to become ready.",
     )
     actor_response_timeout: int = Field(
-        default=10,
+        default=30,
         description="Seconds to wait for actor calls to complete before giving up.",
     )
 
