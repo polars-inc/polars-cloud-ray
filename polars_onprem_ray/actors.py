@@ -4,10 +4,12 @@ import logging
 import os
 import pathlib
 import re
+import signal
 import socket
 import subprocess
 import tempfile
 import threading
+import typing
 
 import psutil
 import ray
@@ -97,6 +99,20 @@ def _stop_orphans(
             process.wait()
 
 
+def _handle_sigterm(func: typing.Callable[[], None]) -> None:
+    """Call function on `SIGTERM` call; then hand off to Ray's handler."""
+    previous_handler = signal.getsignal(signal.SIGTERM)
+
+    def _handler(signum: int, frame: object) -> None:
+        try:
+            func()
+        finally:
+            if callable(previous_handler):
+                previous_handler(signum, frame)  # type: ignore
+
+    signal.signal(signal.SIGTERM, _handler)
+
+
 def _is_ready(
     process: subprocess.Popen | None,
     host: str,
@@ -179,6 +195,10 @@ class PolarsOnPremSchedulerActor:
         self._process: subprocess.Popen | None = None
 
         self.start()
+        _handle_sigterm(self.stop)
+
+    def __ray_shutdown__(self) -> None:
+        self.stop()
 
     def _add_worker(self, worker_id: int) -> None:
         actor_name = resolve_worker_name(worker_id)
@@ -370,6 +390,10 @@ class PolarsOnPremWorkerActor:
         self._process: subprocess.Popen | None = None
 
         self.start()
+        _handle_sigterm(self.stop)
+
+    def __ray_shutdown__(self) -> None:
+        self.stop()
 
     def start(self) -> None:
         """Spawn the worker process, if not already running."""
@@ -559,6 +583,10 @@ class PolarsOnPremScalerActor:
         self._http_server_thread: threading.Thread | None = None
 
         self.start()
+        _handle_sigterm(self.stop)
+
+    def __ray_shutdown__(self) -> None:
+        self.stop()
 
     def start(self) -> None:
         """Start the HTTP server, if not already running."""
