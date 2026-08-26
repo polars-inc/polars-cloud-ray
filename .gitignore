@@ -1,6 +1,6 @@
-_bin/
+_bin
 .coverage
-_etc/
+_etc
 .mypy_cache
 /*.py
 __pycache__

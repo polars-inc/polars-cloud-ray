@@ -1,3 +1,8 @@
+from polars_onprem_ray.actors.license_server import (
+    LICENSE_SERVER_NAME_PREFIX,
+    PolarsLicenseServerActor,
+    resolve_license_server_name,
+)
 from polars_onprem_ray.actors.scaler import (
     SCALER_NAME_PREFIX,
     PolarsScalerActor,
@@ -24,11 +29,13 @@ __all__ = [
     "SCALER_NAME_PREFIX",
     "SCHEDULER_NAME_PREFIX",
     "WORKER_NAME_PREFIX",
+    "PolarsLicenseServerActor",
     "PolarsScalerActor",
     "PolarsSchedulerActor",
     "PolarsWorkerActor",
     "list_actor_names",
     "resolve_actor_handles",
+    "resolve_license_server_name",
     "resolve_scaler_name",
     "resolve_scheduler_name",
     "resolve_worker_name",

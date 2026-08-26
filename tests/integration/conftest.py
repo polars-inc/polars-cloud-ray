@@ -15,6 +15,7 @@ import ray
 from polars_onprem_ray.cluster import PolarsRayCluster
 from polars_onprem_ray.config import (
     PolarsEnterpriseLicenseConfig,
+    PolarsLicenseConfig,
     PolarsMonitoringConfig,
     PolarsObservatoryConfig,
     PolarsRayClusterConfig,
@@ -146,6 +147,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         num_workers: int = 0,
         min_workers: int = 0,
         max_workers: int | None = None,
+        license: PolarsLicenseConfig | None = None,
     ) -> PolarsRayClusterConfig:
         cluster_id = f"polars-onprem-{uuid.uuid4().hex[:8]}"
 
@@ -162,7 +164,9 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             num_workers=num_workers,
             min_workers=min_workers,
             max_workers=max_workers,
-            license=PolarsEnterpriseLicenseConfig(license_path=license_path),
+            license=(
+                license or PolarsEnterpriseLicenseConfig(license_path=license_path)
+            ),
             scheduler=PolarsSchedulerConfig(
                 # cluster configuration
                 cpus_hint=1,
