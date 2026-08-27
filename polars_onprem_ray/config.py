@@ -926,6 +926,14 @@ class PolarsOnPremLicenseServerRuntimeConfig(BaseModel):
         default=30,
         description="Seconds to wait for actor calls to complete before giving up.",
     )
+    cpu_max: int = Field(
+        default=1,
+        description="Number of CPU cores requested for the license server actor.",
+    )
+    memory_max: int = Field(
+        default=30000000,
+        description="Max memory, in bytes, requested for the license server actor.",
+    )
 
     # native binary configuration
     grpc_port: int = Field(

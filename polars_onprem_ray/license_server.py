@@ -62,6 +62,9 @@ class PolarsOnPremLicenseServer:
         self._actor = PolarsOnPremLicenseServerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             lifetime="detached",
+            resources={"head": 0.001},  # pinning
+            num_cpus=self.config.cpu_max,
+            memory=self.config.memory_max,
         ).remote(self.config)
 
     def _wait_for_actor(self) -> None:
