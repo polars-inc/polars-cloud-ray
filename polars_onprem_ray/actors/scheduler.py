@@ -170,14 +170,13 @@ class PolarsOnPremSchedulerActor:
         Parameters
         ----------
         num_workers
-            The number of worker to upscale or downscale to.
+            The number of worker to upscale or downscale to. If neither `delete` nor
+            `keep` is given, random workers are removed.
         delete
             Set of worker instances to terminate. Applied before `keep`.
         keep
             Set of worker instances to keep running, while terminating all the others
             not already removed via `delete`.
-            If neither `delete` nor `keep` is given, the newest workers (highest
-            worker id) are removed first.
 
         """
         worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
