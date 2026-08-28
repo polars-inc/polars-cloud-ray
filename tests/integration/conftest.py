@@ -149,7 +149,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
     ) -> PolarsOnPremClusterConfig:
         cluster_id = f"polars-onprem-{uuid.uuid4().hex[:8]}"
 
-        binary_path = os.environ.get("BINARY_PATH", "./polars-on-premises")
+        binary_path = os.environ.get("BINARY_PATH", "./pc-cublet")
         license_path = os.environ.get("LICENSE_PATH", "./license.json")
 
         return PolarsOnPremClusterConfig(

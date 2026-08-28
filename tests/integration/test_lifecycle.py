@@ -1,5 +1,6 @@
 import ray
 from polars.testing import assert_frame_equal
+
 from polars_onprem_ray.cluster import PolarsOnPremCluster
 
 from .conftest import RayClusterConfigFactory, TestQuery

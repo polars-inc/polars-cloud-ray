@@ -1,4 +1,5 @@
 import ray
+
 from polars_onprem_ray.context import RayClusterContext
 
 from .conftest import RayClusterConfigFactory, TestQuery

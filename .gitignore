@@ -1,10 +1,7 @@
+_bin/
 .coverage
-license.json
+_etc/
 .mypy_cache
-pc-cublet*
-pc_cublet*
-polars-on-premises*
-polars_on_premises*
 /*.py
 __pycache__
 .pytest_cache
