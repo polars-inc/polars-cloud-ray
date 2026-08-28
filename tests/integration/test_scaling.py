@@ -5,7 +5,11 @@ import urllib.request
 import pytest
 import ray
 
-from polars_onprem_ray.actors import SCALER_NAME_PREFIX, WORKER_NAME_PREFIX, list_actor_names
+from polars_onprem_ray.actors import (
+    SCALER_NAME_PREFIX,
+    WORKER_NAME_PREFIX,
+    list_actor_names,
+)
 
 from .conftest import RayClusterFactory, TestQuery
 

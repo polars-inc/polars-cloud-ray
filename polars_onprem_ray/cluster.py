@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class PolarsOnPremCluster:
-    """Manage lifecycle of scheduler and workers.
+    """Manage the lifecycles of the scheduler, workers and scaler actors.
 
     ```py
     import polars as pl

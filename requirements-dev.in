@@ -1,7 +1,0 @@
-polars==1.43.2
-polars-cloud==0.10.0
-psutil==7.2.2
-pydantic==2.13.4
-pytest==9.1.1
-ray[default]==2.55.1
-toml==0.10.2

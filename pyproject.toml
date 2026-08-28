@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "polars>=1.42.1",
     "polars-cloud>=0.9",
+    "psutil>=7.0",
     "pydantic>=2.0",
     "ray>=2.0",
     "toml>=0.10",
@@ -13,7 +14,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "psutil>=7.0",
     "pytest>=9.1",
 ]
 

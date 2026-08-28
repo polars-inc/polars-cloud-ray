@@ -696,7 +696,7 @@ class PolarsOnPremClusterConfig(BaseModel):
 
     # cluster configuration
     binary_path: str = Field(
-        default="polars-on-premises",
+        default="pc-cublet",
         description="Path to the binary.",
     )
     single_host_cluster: bool = Field(
