@@ -8,7 +8,7 @@ from ray.actor import ActorHandle
 
 from polars_onprem_ray.actors.scheduler import resolve_scheduler_name
 from polars_onprem_ray.actors.utils import _handle_sigterm
-from polars_onprem_ray.config import PolarsOnPremClusterConfig
+from polars_onprem_ray.config import PolarsRayClusterConfig
 
 SCALER_NAME_PREFIX = "scaler"
 
@@ -134,11 +134,11 @@ class _ScalingHTTPServer(http.server.ThreadingHTTPServer):
 
 
 @ray.remote
-class PolarsOnPremScalerActor:
+class PolarsScalerActor:
     """Bridge service relaying scaling requests to the scheduler actor."""
 
-    def __init__(self, config: PolarsOnPremClusterConfig) -> None:
-        self.config: PolarsOnPremClusterConfig = config
+    def __init__(self, config: PolarsRayClusterConfig) -> None:
+        self.config: PolarsRayClusterConfig = config
 
         self._http_server: _ScalingHTTPServer | None = None
         self._http_server_thread: threading.Thread | None = None

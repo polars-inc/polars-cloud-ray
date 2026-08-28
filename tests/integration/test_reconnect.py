@@ -6,7 +6,7 @@ from polars_onprem_ray.actors import (
     WORKER_NAME_PREFIX,
     list_actor_names,
 )
-from polars_onprem_ray.cluster import PolarsOnPremCluster
+from polars_onprem_ray.cluster import PolarsRayCluster
 
 from .conftest import RayClusterConfigFactory, TestQuery
 
@@ -18,7 +18,7 @@ def test_reconnect_existing_cluster(
     config = ray_cluster_config(num_workers=1)
 
     ray.init(address="auto", namespace=config.cluster_id, ignore_reinit_error=True)
-    cluster0 = PolarsOnPremCluster(config)
+    cluster0 = PolarsRayCluster(config)
     cluster0.start()
 
     scheduler0 = ray.get_actor(SCHEDULER_NAME_PREFIX, namespace=config.cluster_id)
@@ -31,7 +31,7 @@ def test_reconnect_existing_cluster(
     ray.shutdown()  # simulates the driver process exiting (cluster stays up)
 
     ray.init(address="auto", namespace=config.cluster_id, ignore_reinit_error=True)
-    cluster1 = PolarsOnPremCluster(config)
+    cluster1 = PolarsRayCluster(config)
     cluster1.start()
 
     scheduler1 = ray.get_actor(SCHEDULER_NAME_PREFIX, namespace=config.cluster_id)

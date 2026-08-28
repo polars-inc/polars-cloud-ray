@@ -14,7 +14,7 @@ from polars_onprem_ray.actors.utils import (
     _stop,
     _stop_orphans,
 )
-from polars_onprem_ray.config import PolarsOnPremClusterConfig
+from polars_onprem_ray.config import PolarsRayClusterConfig
 
 WORKER_NAME_PREFIX = "worker"
 
@@ -30,16 +30,16 @@ def _resolve_worker_name_regex() -> re.Pattern:
 
 
 @ray.remote
-class PolarsOnPremWorkerActor:
+class PolarsWorkerActor:
     """The computing service, accepting tasks from the scheduler."""
 
     def __init__(
         self,
-        config: PolarsOnPremClusterConfig,
+        config: PolarsRayClusterConfig,
         worker_id: int,
         scheduler_host: str,
     ) -> None:
-        self.config: PolarsOnPremClusterConfig = config
+        self.config: PolarsRayClusterConfig = config
 
         self.worker_id = worker_id
         self.worker_host: str = _resolve_host()

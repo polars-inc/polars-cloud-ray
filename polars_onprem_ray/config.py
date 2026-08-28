@@ -189,7 +189,7 @@ class LineageStdioConfig(BaseModel):
     )
 
 
-class PolarsOnPremLineageConfig(BaseModel):
+class PolarsLineageConfig(BaseModel):
     """Enable support for lineage exporting to a specific endpoint."""
 
     model_config = ConfigDict(frozen=True)
@@ -214,7 +214,7 @@ class PolarsOnPremLineageConfig(BaseModel):
         return {"transport": d} if d else None
 
 
-class PolarsOnPremCheckpointConfig(BaseModel):
+class PolarsCheckpointConfig(BaseModel):
     """Checkpointing for queries.
 
     Checkpointing is enabled automatically whenever a checkpoint location is
@@ -235,7 +235,7 @@ class PolarsOnPremCheckpointConfig(BaseModel):
     )
 
 
-class PolarsOnPremEnterpriseLicenseConfig(BaseModel):
+class PolarsEnterpriseLicenseConfig(BaseModel):
     """Validate the license from a local offline license file."""
 
     model_config = ConfigDict(frozen=True)
@@ -252,7 +252,7 @@ class PolarsOnPremEnterpriseLicenseConfig(BaseModel):
         return {self.license_type: self.model_dump(exclude={"license_type"})}
 
 
-class PolarsOnPremLicenseServerConfig(BaseModel):
+class PolarsLicenseServerConfig(BaseModel):
     """Validate the license against a Polars license server."""
 
     model_config = ConfigDict(frozen=True)
@@ -264,7 +264,7 @@ class PolarsOnPremLicenseServerConfig(BaseModel):
         return {self.license_type: self.model_dump(exclude={"license_type"})}
 
 
-class PolarsOnPremServiceAccountLicenseConfig(BaseModel):
+class PolarsServiceAccountLicenseConfig(BaseModel):
     """Validate the license online via the Polars control plane."""
 
     model_config = ConfigDict(frozen=True)
@@ -288,15 +288,15 @@ class PolarsOnPremServiceAccountLicenseConfig(BaseModel):
         }
 
 
-PolarsOnPremLicenseConfig = typing.Annotated[
-    PolarsOnPremEnterpriseLicenseConfig
-    | PolarsOnPremServiceAccountLicenseConfig
-    | PolarsOnPremLicenseServerConfig,
+PolarsLicenseConfig = typing.Annotated[
+    PolarsEnterpriseLicenseConfig
+    | PolarsServiceAccountLicenseConfig
+    | PolarsLicenseServerConfig,
     Field(discriminator="license_type"),
 ]
 
 
-class PolarsOnPremTlsConnectionConfig(BaseModel):
+class PolarsTlsConnectionConfig(BaseModel):
     """Require TLS for a service."""
 
     model_config = ConfigDict(frozen=True)
@@ -312,7 +312,7 @@ class PolarsOnPremTlsConnectionConfig(BaseModel):
         return {"tls": self.model_dump()}
 
 
-class PolarsOnPremJwksAuthConfig(BaseModel):
+class PolarsJwksAuthConfig(BaseModel):
     """Require a JWT validated against a JWKS endpoint for a service."""
 
     model_config = ConfigDict(frozen=True)
@@ -325,7 +325,7 @@ class PolarsOnPremJwksAuthConfig(BaseModel):
         return {"jwks": self.model_dump()}
 
 
-class PolarsOnPremObservatoryConfig(BaseModel):
+class PolarsObservatoryConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = Field(
@@ -358,11 +358,11 @@ class PolarsOnPremObservatoryConfig(BaseModel):
         default=3001,
         description="Port for the observatory REST API and dashboard.",
     )
-    rest_connection: PolarsOnPremTlsConnectionConfig | None = Field(
+    rest_connection: PolarsTlsConnectionConfig | None = Field(
         default=None,
         description="Require TLS on the REST API/dashboard service. Disabled if unset.",
     )
-    rest_auth: PolarsOnPremJwksAuthConfig | None = Field(
+    rest_auth: PolarsJwksAuthConfig | None = Field(
         default=None,
         description=(
             "Require a JWT validated against a JWKS endpoint on the REST "
@@ -394,7 +394,7 @@ class PolarsOnPremObservatoryConfig(BaseModel):
         return d
 
 
-class PolarsOnPremMonitoringConfig(BaseModel):
+class PolarsMonitoringConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = Field(
@@ -415,7 +415,7 @@ class PolarsOnPremMonitoringConfig(BaseModel):
         return d
 
 
-class PolarsOnPremScalingConfig(BaseModel):
+class PolarsScalingConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool = Field(
@@ -444,14 +444,16 @@ class PolarsOnPremScalingConfig(BaseModel):
         return d
 
 
-class PolarsOnPremSchedulerConfig(BaseModel):
+class PolarsSchedulerConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     # cluster configuration
-    cpu_max: int = Field(
+    cpus_hint: int = Field(
+        default=1,
         description="Number of CPU cores requested for the scheduler actor.",
     )
-    memory_max: int = Field(
+    memory_hint: int = Field(
+        default=1 * 1024**3,
         description="Max memory, in bytes, requested for the scheduler actor.",
     )
 
@@ -482,11 +484,11 @@ class PolarsOnPremSchedulerConfig(BaseModel):
         default=5050,
         description="Port workers register with the scheduler on.",
     )
-    connection: PolarsOnPremTlsConnectionConfig | None = Field(
+    connection: PolarsTlsConnectionConfig | None = Field(
         default=None,
         description="Require TLS on the client-facing gRPC service. Disabled if unset.",
     )
-    auth: PolarsOnPremJwksAuthConfig | None = Field(
+    auth: PolarsJwksAuthConfig | None = Field(
         default=None,
         description=(
             "Require a JWT validated against a JWKS endpoint on the client-facing "
@@ -536,16 +538,16 @@ class PolarsOnPremSchedulerConfig(BaseModel):
             "query."
         ),
     )
-    checkpoint: PolarsOnPremCheckpointConfig | None = Field(
+    checkpoint: PolarsCheckpointConfig | None = Field(
         default=None,
         description="Scheduler checkpointing configuration. Disabled if unset.",
     )
-    observatory: PolarsOnPremObservatoryConfig = Field(
-        default_factory=PolarsOnPremObservatoryConfig,
+    observatory: PolarsObservatoryConfig = Field(
+        default_factory=PolarsObservatoryConfig,
         description="Observatory (metrics, tracing, dashboard) configuration.",
     )
-    scaling: PolarsOnPremScalingConfig = Field(
-        default_factory=PolarsOnPremScalingConfig,
+    scaling: PolarsScalingConfig = Field(
+        default_factory=PolarsScalingConfig,
         description="Autoscaling (ScalingService REST callback) configuration.",
     )
 
@@ -560,7 +562,7 @@ class PolarsOnPremSchedulerConfig(BaseModel):
             },
         }
 
-    def config_license(self, license_: PolarsOnPremLicenseConfig) -> dict:
+    def config_license(self, license_: PolarsLicenseConfig) -> dict:
         return license_.config()
 
     def config(self, num_workers: int) -> dict:
@@ -591,15 +593,16 @@ class PolarsOnPremSchedulerConfig(BaseModel):
         return d
 
 
-class PolarsOnPremWorkerConfig(BaseModel):
+class PolarsWorkerConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     # cluster configuration
-    cpu_max: int | None = Field(
-        default=None,
+    cpus_hint: int = Field(
+        default=1,
         description="Number of CPU cores requested for each worker actor.",
     )
-    memory_max: int = Field(
+    memory_hint: int = Field(
+        default=2 * 1024**3,
         description="Max memory, in bytes, requested for each worker actor.",
     )
 
@@ -662,8 +665,8 @@ class PolarsOnPremWorkerConfig(BaseModel):
         ),
     )
 
-    def config_license(self, license_: PolarsOnPremLicenseConfig) -> dict | None:
-        if isinstance(license_, PolarsOnPremServiceAccountLicenseConfig):
+    def config_license(self, license_: PolarsLicenseConfig) -> dict | None:
+        if isinstance(license_, PolarsServiceAccountLicenseConfig):
             return None
         return license_.config()
 
@@ -691,7 +694,7 @@ class PolarsOnPremWorkerConfig(BaseModel):
         return d
 
 
-class PolarsOnPremClusterConfig(BaseModel):
+class PolarsRayClusterConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     # cluster configuration
@@ -752,23 +755,23 @@ class PolarsOnPremClusterConfig(BaseModel):
             "EULA instead. Sets POLARS_EULA_ACCEPTED."
         ),
     )
-    license: PolarsOnPremLicenseConfig = Field(
+    license: PolarsLicenseConfig = Field(
         description=(
             "License configuration: online control-plane, offline enterprise file, "
             "or a license server."
         ),
     )
-    scheduler: PolarsOnPremSchedulerConfig = Field(
+    scheduler: PolarsSchedulerConfig = Field(
         description="Scheduler actor configuration.",
     )
-    worker: PolarsOnPremWorkerConfig = Field(
+    worker: PolarsWorkerConfig = Field(
         description="Worker actor configuration, shared by all workers.",
     )
-    monitoring: PolarsOnPremMonitoringConfig = Field(
-        default_factory=PolarsOnPremMonitoringConfig,
+    monitoring: PolarsMonitoringConfig = Field(
+        default_factory=PolarsMonitoringConfig,
         description="Monitoring (host metrics) configuration.",
     )
-    lineage: PolarsOnPremLineageConfig | None = Field(
+    lineage: PolarsLineageConfig | None = Field(
         default=None,
         description="Lineage event transport configuration. Disabled if unset.",
     )
@@ -786,7 +789,7 @@ class PolarsOnPremClusterConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _absolute_binary_path(self) -> "PolarsOnPremClusterConfig":
+    def _absolute_binary_path(self) -> "PolarsRayClusterConfig":
         """Resolve `binary_path` to an absolute path."""
         object.__setattr__(
             self, "binary_path", str(_resolve_absolute_path(self.binary_path))
