@@ -18,11 +18,11 @@ from polars_onprem_ray.actors.utils import (
 )
 from polars_onprem_ray.actors.worker import (
     WORKER_NAME_PREFIX,
-    PolarsOnPremWorkerActor,
+    PolarsWorkerActor,
     _resolve_worker_name_regex,
     resolve_worker_name,
 )
-from polars_onprem_ray.config import PolarsOnPremClusterConfig
+from polars_onprem_ray.config import PolarsRayClusterConfig
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 
@@ -34,11 +34,11 @@ def resolve_scheduler_name() -> str:
 
 
 @ray.remote
-class PolarsOnPremSchedulerActor:
+class PolarsSchedulerActor:
     """The central service, distributing tasks and piloting autoscaling."""
 
-    def __init__(self, config: PolarsOnPremClusterConfig) -> None:
-        self.config: PolarsOnPremClusterConfig = config
+    def __init__(self, config: PolarsRayClusterConfig) -> None:
+        self.config: PolarsRayClusterConfig = config
 
         self.scheduler_host: str = _resolve_host()
         self.num_workers: int = config.num_workers  # initial value
@@ -55,13 +55,13 @@ class PolarsOnPremSchedulerActor:
     def _add_worker(self, worker_id: int) -> None:
         actor_name = resolve_worker_name(worker_id)
 
-        PolarsOnPremWorkerActor.options(  # type: ignore[attr-defined]
+        PolarsWorkerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
             max_restarts=self.config.worker_max_restarts,
-            num_cpus=self.config.worker.cpu_max,
-            memory=self.config.worker.memory_max,
+            num_cpus=self.config.worker.cpus_hint,
+            memory=self.config.worker.memory_hint,
         ).remote(self.config, worker_id, self.scheduler_host)
 
         logger.info("Requested new worker %s", actor_name)

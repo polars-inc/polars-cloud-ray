@@ -12,20 +12,20 @@ import polars_cloud as pc
 import pytest
 import ray
 
-from polars_onprem_ray.cluster import PolarsOnPremCluster
+from polars_onprem_ray.cluster import PolarsRayCluster
 from polars_onprem_ray.config import (
-    PolarsOnPremClusterConfig,
-    PolarsOnPremEnterpriseLicenseConfig,
-    PolarsOnPremMonitoringConfig,
-    PolarsOnPremObservatoryConfig,
-    PolarsOnPremScalingConfig,
-    PolarsOnPremSchedulerConfig,
-    PolarsOnPremWorkerConfig,
+    PolarsEnterpriseLicenseConfig,
+    PolarsMonitoringConfig,
+    PolarsObservatoryConfig,
+    PolarsRayClusterConfig,
+    PolarsScalingConfig,
+    PolarsSchedulerConfig,
+    PolarsWorkerConfig,
 )
 from polars_onprem_ray.context import RayClusterContext
 
-RayClusterConfigFactory = Callable[..., PolarsOnPremClusterConfig]
-RayClusterFactory = Callable[..., PolarsOnPremCluster]
+RayClusterConfigFactory = Callable[..., PolarsRayClusterConfig]
+RayClusterFactory = Callable[..., PolarsRayCluster]
 TestQuery = Callable[..., pl.DataFrame | None]
 
 RAY_GCS_PORT = 6379
@@ -115,12 +115,12 @@ def ray_head() -> Iterator[None]:
 def ray_cluster(
     ray_cluster_config: RayClusterConfigFactory,
 ) -> Iterator[RayClusterFactory]:
-    started: list[PolarsOnPremCluster] = []
+    started: list[PolarsRayCluster] = []
 
-    def _factory(**kwargs) -> PolarsOnPremCluster:
+    def _factory(**kwargs) -> PolarsRayCluster:
         config = ray_cluster_config(**kwargs)
         ray.init(address="auto", namespace=config.cluster_id, ignore_reinit_error=True)
-        cluster = PolarsOnPremCluster(config)
+        cluster = PolarsRayCluster(config)
         started.append(cluster)
         cluster.start()
         return cluster
@@ -146,13 +146,13 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         num_workers: int = 0,
         min_workers: int = 0,
         max_workers: int | None = None,
-    ) -> PolarsOnPremClusterConfig:
+    ) -> PolarsRayClusterConfig:
         cluster_id = f"polars-onprem-{uuid.uuid4().hex[:8]}"
 
         binary_path = os.environ.get("BINARY_PATH", "./pc-cublet")
         license_path = os.environ.get("LICENSE_PATH", "./license.json")
 
-        return PolarsOnPremClusterConfig(
+        return PolarsRayClusterConfig(
             # cluster configuration
             binary_path=binary_path,
             single_host_cluster=True,
@@ -162,32 +162,32 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             num_workers=num_workers,
             min_workers=min_workers,
             max_workers=max_workers,
-            license=PolarsOnPremEnterpriseLicenseConfig(license_path=license_path),
-            scheduler=PolarsOnPremSchedulerConfig(
+            license=PolarsEnterpriseLicenseConfig(license_path=license_path),
+            scheduler=PolarsSchedulerConfig(
                 # cluster configuration
-                cpu_max=1,
-                memory_max=1,
+                cpus_hint=1,
+                memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
                 client_port=_free_port(),
                 worker_registration_port=_free_port(),
-                observatory=PolarsOnPremObservatoryConfig(enabled=False),
-                scaling=PolarsOnPremScalingConfig(
+                observatory=PolarsObservatoryConfig(enabled=False),
+                scaling=PolarsScalingConfig(
                     enabled=scaling_enabled,
                     port=_free_port(),
                 ),
             ),
-            worker=PolarsOnPremWorkerConfig(
+            worker=PolarsWorkerConfig(
                 # cluster configuration
-                cpu_max=1,
-                memory_max=1,
+                cpus_hint=1,
+                memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
                 memory_limit=worker_memory_limit,
                 task_port=_free_port_range(),
                 shuffle_port=_free_port_range(),
             ),
-            monitoring=PolarsOnPremMonitoringConfig(enabled=False),
+            monitoring=PolarsMonitoringConfig(enabled=False),
         )
 
     return _factory
@@ -197,7 +197,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
 def run_query() -> TestQuery:
     def _factory(
         *,
-        cluster: PolarsOnPremCluster | None = None,
+        cluster: PolarsRayCluster | None = None,
         context: RayClusterContext | None = None,
         min_workers: int | None = None,
         max_workers: int | None = None,

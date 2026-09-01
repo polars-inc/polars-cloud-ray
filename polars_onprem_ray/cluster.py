@@ -8,9 +8,9 @@ from ray.exceptions import GetTimeoutError
 
 from polars_onprem_ray.actors import (
     WORKER_NAME_PREFIX,
-    PolarsOnPremScalerActor,
-    PolarsOnPremSchedulerActor,
-    PolarsOnPremWorkerActor,
+    PolarsScalerActor,
+    PolarsSchedulerActor,
+    PolarsWorkerActor,
     list_actor_names,
     resolve_actor_handles,
     resolve_scaler_name,
@@ -18,13 +18,13 @@ from polars_onprem_ray.actors import (
     resolve_worker_name,
     terminate_actors,
 )
-from polars_onprem_ray.config import PolarsOnPremClusterConfig
+from polars_onprem_ray.config import PolarsRayClusterConfig
 
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-class PolarsOnPremCluster:
+class PolarsRayCluster:
     """Manage the lifecycles of the scheduler, workers and scaler actors.
 
     ```py
@@ -32,24 +32,30 @@ class PolarsOnPremCluster:
     import polars_cloud as pc
     import ray
 
-    from polars_onprem_ray.cluster import PolarsOnPremCluster
+    from polars_onprem_ray.cluster import PolarsRayCluster
     from polars_onprem_ray.config import (
-        PolarsOnPremClusterConfig,
-        PolarsOnPremEnterpriseLicenseConfig,
-        PolarsOnPremSchedulerConfig,
-        PolarsOnPremWorkerConfig,
+        PolarsObservatoryConfig,
+        PolarsRayClusterConfig,
+        PolarsSchedulerConfig,
+        PolarsServiceAccountLicenseConfig,
     )
 
-    config = PolarsOnPremClusterConfig(
+    config = PolarsRayClusterConfig(
         # single_host_cluster=True,
         num_workers=4,
-        license=PolarsOnPremEnterpriseLicenseConfig(license_path="./license.json"),
-        scheduler=PolarsOnPremSchedulerConfig(cpu_max=1, memory_max=2 * 1024**3),
-        worker=PolarsOnPremWorkerConfig(cpu_max=2, memory_max=4 * 1024**3),
+        license=PolarsServiceAccountLicenseConfig(
+            client_id="<SERVICE_ACCOUNT_ID>",
+            client_secret="<SERVICE_ACCOUNT_SECRET>",
+        ),
+        scheduler=PolarsSchedulerConfig(
+            observatory=PolarsObservatoryConfig(
+                database_path="/tmp/polars/observatory"
+            ),
+        ),
     )
 
     ray.init(address="auto", namespace=config.cluster_id)
-    cluster = PolarsOnPremCluster(config)
+    cluster = PolarsRayCluster(config)
     cluster.start()
 
     print(
@@ -65,7 +71,7 @@ class PolarsOnPremCluster:
     ```
     """
 
-    def __init__(self, config: PolarsOnPremClusterConfig) -> None:
+    def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config = config
 
         self._scaler_actor: typing.Any = None
@@ -93,13 +99,13 @@ class PolarsOnPremCluster:
             logger.info("Reconnected to existing scheduler actor")
             return
 
-        self._scheduler_actor = PolarsOnPremSchedulerActor.options(  # type: ignore[attr-defined]
+        self._scheduler_actor = PolarsSchedulerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
             resources={"head": 0.001},  # pinning
-            num_cpus=self.config.scheduler.cpu_max,
-            memory=self.config.scheduler.memory_max,
+            num_cpus=self.config.scheduler.cpus_hint,
+            memory=self.config.scheduler.memory_hint,
         ).remote(self.config)
 
     def _start_workers(self) -> None:
@@ -121,13 +127,13 @@ class PolarsOnPremCluster:
                 actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
                 logger.info("Reconnected to existing worker %s", actor_name)
             except ValueError:
-                actor = PolarsOnPremWorkerActor.options(  # type: ignore[attr-defined]
+                actor = PolarsWorkerActor.options(  # type: ignore[attr-defined]
                     name=actor_name,
                     namespace=self.config.cluster_id,
                     lifetime="detached",
                     max_restarts=self.config.worker_max_restarts,
-                    num_cpus=self.config.worker.cpu_max,
-                    memory=self.config.worker.memory_max,
+                    num_cpus=self.config.worker.cpus_hint,
+                    memory=self.config.worker.memory_hint,
                 ).remote(self.config, worker_id, scheduler_host)
                 logger.info("Worker %s started", actor_name)
 
@@ -149,7 +155,7 @@ class PolarsOnPremCluster:
             logger.info("Reconnected to existing scaler actor")
             return
 
-        self._scaler_actor = PolarsOnPremScalerActor.options(  # type: ignore[attr-defined]
+        self._scaler_actor = PolarsScalerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",

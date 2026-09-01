@@ -1,11 +1,11 @@
 from polars_onprem_ray.actors.scaler import (
     SCALER_NAME_PREFIX,
-    PolarsOnPremScalerActor,
+    PolarsScalerActor,
     resolve_scaler_name,
 )
 from polars_onprem_ray.actors.scheduler import (
     SCHEDULER_NAME_PREFIX,
-    PolarsOnPremSchedulerActor,
+    PolarsSchedulerActor,
     resolve_scheduler_name,
 )
 from polars_onprem_ray.actors.utils import (
@@ -15,7 +15,7 @@ from polars_onprem_ray.actors.utils import (
 )
 from polars_onprem_ray.actors.worker import (
     WORKER_NAME_PREFIX,
-    PolarsOnPremWorkerActor,
+    PolarsWorkerActor,
     resolve_worker_name,
 )
 
@@ -24,9 +24,9 @@ __all__ = [
     "SCALER_NAME_PREFIX",
     "SCHEDULER_NAME_PREFIX",
     "WORKER_NAME_PREFIX",
-    "PolarsOnPremScalerActor",
-    "PolarsOnPremSchedulerActor",
-    "PolarsOnPremWorkerActor",
+    "PolarsScalerActor",
+    "PolarsSchedulerActor",
+    "PolarsWorkerActor",
     "list_actor_names",
     "resolve_actor_handles",
     "resolve_scaler_name",

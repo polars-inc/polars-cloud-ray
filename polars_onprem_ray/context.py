@@ -1,29 +1,35 @@
 from polars_cloud import ClientOptions, ClusterContext
 
-from polars_onprem_ray.cluster import PolarsOnPremCluster
+from polars_onprem_ray.cluster import PolarsRayCluster
 
 
-class RayClusterContext(PolarsOnPremCluster, ClusterContext):
-    """A `PolarsOnPremCluster` directly usable as a `polars_cloud.ClusterContext`.
+class RayClusterContext(PolarsRayCluster, ClusterContext):
+    """A `PolarsRayCluster` directly usable as a `polars_cloud.ClusterContext`.
 
     ```py
     import polars as pl
     import ray
 
     from polars_onprem_ray.config import (
-        PolarsOnPremClusterConfig,
-        PolarsOnPremEnterpriseLicenseConfig,
-        PolarsOnPremSchedulerConfig,
-        PolarsOnPremWorkerConfig,
+        PolarsObservatoryConfig,
+        PolarsRayClusterConfig,
+        PolarsSchedulerConfig,
+        PolarsServiceAccountLicenseConfig,
     )
     from polars_onprem_ray.context import RayClusterContext
 
-    config = PolarsOnPremClusterConfig(
+    config = PolarsRayClusterConfig(
         # single_host_cluster=True,
         num_workers=4,
-        license=PolarsOnPremEnterpriseLicenseConfig(license_path="./license.json"),
-        scheduler=PolarsOnPremSchedulerConfig(cpu_max=1, memory_max=2 * 1024**3),
-        worker=PolarsOnPremWorkerConfig(cpu_max=2, memory_max=4 * 1024**3),
+        license=PolarsServiceAccountLicenseConfig(
+            client_id="<SERVICE_ACCOUNT_ID>",
+            client_secret="<SERVICE_ACCOUNT_SECRET>",
+        ),
+        scheduler=PolarsSchedulerConfig(
+            observatory=PolarsObservatoryConfig(
+                database_path="/tmp/polars/observatory"
+            ),
+        ),
     )
 
     ray.init(address="auto", namespace=config.cluster_id)

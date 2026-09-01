@@ -4,7 +4,7 @@ Runs the Polars On-Prem scheduler and workers as [Ray](https://www.ray.io/) acto
 
 ## Quickstart
 
-Prerequisites:
+Prerequisites for a completely local test deployement:
 
 - A Polars On-Prem binary accessible on the machine
 - A Polars On-Prem `license.json` file, or a valid service account
@@ -17,6 +17,17 @@ uv pip install polars-onprem-ray
 ```
 
 It will also install `ray` as a dependency.
+Note that a few things need to be set up for the Polars On-Prem cluster to
+function properly:
+
+```sh
+# path to libpython3.x.so
+export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
+
+# need to match the config if manually changed
+mkdir --parents /tmp/polars/{anonymous-results,observatory,shuffle-data,temporary-data}
+```
+
 This latter can be started using the following command:
 
 ```sh
@@ -29,16 +40,12 @@ ray start \
   --resources='{"head":1}' # pinning
 ```
 
-Note that a few things need to be set up for the Polars On-Prem cluster to
-function properly:
+If you do not already have one, create a Polars service account through the
+[cloud portal](https://cloud.pola.rs/api/redirects/register).
+Pull the Polars On-Prem binary locally, and remember its local path:
 
 ```sh
-# path to libpython3.x.so
-LIBDIR=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+${LD_LIBRARY_PATH}:}${LIBDIR}"
-
-# need to match the config if manually changed
-mkdir --parents /tmp/polars/{anonymous-results,shuffle-data,temporary-data}
+wget https://cdn.onprem.pola.rs/polars-on-premises-0.8.0-linux-x86
 ```
 
 Spawn a local multinode cluster:
@@ -48,33 +55,31 @@ import polars as pl
 import polars_cloud as pc
 import ray
 
-from polars_onprem_ray.cluster import PolarsOnPremCluster
+from polars_onprem_ray.cluster import PolarsRayCluster
 from polars_onprem_ray.config import (
-    PolarsOnPremClusterConfig,
-    PolarsOnPremEnterpriseLicenseConfig,
-    PolarsOnPremSchedulerConfig,
-    PolarsOnPremWorkerConfig,
+    PolarsObservatoryConfig,
+    PolarsRayClusterConfig,
+    PolarsSchedulerConfig,
+    PolarsServiceAccountLicenseConfig,
 )
 
-config = PolarsOnPremClusterConfig(
-    single_host_cluster=True,
+config = PolarsRayClusterConfig(
+    binary_path="/path/to/binary",
     num_workers=4,
-    license=PolarsOnPremEnterpriseLicenseConfig(license_path="/path/to/license.json"),
-    scheduler=PolarsOnPremSchedulerConfig(
-        cpu_max=1,
-        memory_max=2 * 1024**3,
-        observatory=PolarsOnPremObservatoryConfig(
-            database_path="/tmp/polars/observatory.db"
-        ),
+    single_host_cluster=True,
+    license=PolarsServiceAccountLicenseConfig(
+        client_id="<SERVICE_ACCOUNT_ID>",
+        client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
-    worker=PolarsOnPremWorkerConfig(
-        cpu_max=2,
-        memory_max=4 * 1024**3,
+    scheduler=PolarsSchedulerConfig(
+        observatory=PolarsObservatoryConfig(
+            database_path="/tmp/polars/observatory"
+        ),
     ),
 )
 
 ray.init(address="auto", namespace=config.cluster_id)
-cluster = PolarsOnPremCluster(config)
+cluster = PolarsRayCluster(config)
 cluster.start()
 
 print(
@@ -96,27 +101,25 @@ import polars as pl
 import ray
 
 from polars_onprem_ray.config import (
-    PolarsOnPremClusterConfig,
-    PolarsOnPremEnterpriseLicenseConfig,
-    PolarsOnPremSchedulerConfig,
-    PolarsOnPremWorkerConfig,
+    PolarsObservatoryConfig,
+    PolarsRayClusterConfig,
+    PolarsSchedulerConfig,
+    PolarsServiceAccountLicenseConfig,
 )
 from polars_onprem_ray.context import RayClusterContext
 
-config = PolarsOnPremClusterConfig(
-    # single_host_cluster=True,
+config = PolarsRayClusterConfig(
+    binary_path="/path/to/binary",
     num_workers=4,
-    license=PolarsOnPremEnterpriseLicenseConfig(license_path="./license.json"),
-    scheduler=PolarsOnPremSchedulerConfig(
-        cpu_max=1,
-        memory_max=2 * 1024**3,
-        observatory=PolarsOnPremObservatoryConfig(
-            database_path="/tmp/polars/observatory.db"
-        ),
+    single_host_cluster=True,
+    license=PolarsServiceAccountLicenseConfig(
+        client_id="<SERVICE_ACCOUNT_ID>",
+        client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
-    worker=PolarsOnPremWorkerConfig(
-        cpu_max=2,
-        memory_max=4 * 1024**3,
+    scheduler=PolarsSchedulerConfig(
+        observatory=PolarsObservatoryConfig(
+            database_path="/tmp/polars/observatory"
+        ),
     ),
 )
 
@@ -155,7 +158,7 @@ handle scaling requests sent by the underlying binary.
 These requests are relayed to the scheduler actor, which in turn adds or removes
 Ray worker actors in response.
 
-Enable it via `PolarsOnPremScalingConfig` on the scheduler, and optionally set
+Enable it via `PolarsScalingConfig` on the scheduler, and optionally set
 `min_workers` and/or `max_workers` on the cluster config to bound how far it may
 scale.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
