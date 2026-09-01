@@ -174,46 +174,46 @@ Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
 ## License server
 
-`PolarsOnPremLicenseServer` manages a `pc-license-server` process, Polars
-On-Prem's offline license server: clusters point their configuration at it via
-`PolarsOnPremLicenseServerConfig(uri=...)` and it validates them locally,
-tracking usage into signed reports it periodically emits (and optionally
-uploads to the control plane).
+`PolarsLicenseServer` manages a `pc-license-server` process, Polars On-Prem's
+offline license server: clusters point their configuration at it via
+`PolarsLicenseServerConfig(uri=...)` and it validates them locally, tracking
+usage into signed reports it periodically emits (and optionally uploads to the
+control plane).
 
 It is standalone: unlike the scheduler/worker/scaler, it is not wired into
-`PolarsOnPremCluster`. It is meant to be a single, long-lived service that any
-number of separate clusters register against, so its lifecycle (and Ray
-namespace) is managed independently, and it should be started _before_ any
+`PolarsCluster`. It is meant to be a single, long-lived service that any number
+of separate clusters register against, so its lifecycle (and Ray namespace) is
+managed independently, and it should be started _before_ any
 cluster that points at it.
 
 ```py
 import ray
 
-from polars_onprem_ray.config import PolarsOnPremLicenseServerRuntimeConfig
-from polars_onprem_ray.license_server import PolarsOnPremLicenseServer
+from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_onprem_ray.license_server import PolarsLicenseServer
 
-config = PolarsOnPremLicenseServerRuntimeConfig(
+config = PolarsLicenseServerRuntimeConfig(
     report_dir="/var/log/polars/license-server",
     license_path="/etc/polars/license.json",
     tls_bundle_path="/etc/polars/tls-bundle.pem",
 )
 
 ray.init(address="auto", namespace="license-server")
-license_server = PolarsOnPremLicenseServer(config)
+license_server = PolarsLicenseServer(config)
 license_server.start()
 ```
 
 A cluster then validates against it with:
 
 ```py
-from polars_onprem_ray.config import PolarsOnPremLicenseServerConfig
+from polars_onprem_ray.config import PolarsLicenseServerConfig
 
-license = PolarsOnPremLicenseServerConfig(uri=license_server.get_bind_addr())
+license = PolarsLicenseServerConfig(uri=license_server.get_bind_addr())
 ```
 
 To reconnect to (or stop) an already-running license server from another
 process, call `ray.init()` with the same namespace it was started under, then
-`PolarsOnPremLicenseServer(config).start()` (reconnects) or `.stop()`.
+`PolarsLicenseServer(config).start()` (reconnects) or `.stop()`.
 
 ## Resource requests and limits
 

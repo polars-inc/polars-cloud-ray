@@ -4,8 +4,8 @@ import shutil
 import socket
 import subprocess
 import sysconfig
+import typing
 import uuid
-from collections.abc import Callable, Iterator
 
 import polars as pl
 import polars_cloud as pc
@@ -25,9 +25,9 @@ from polars_onprem_ray.config import (
 )
 from polars_onprem_ray.context import RayClusterContext
 
-RayClusterConfigFactory = Callable[..., PolarsRayClusterConfig]
-RayClusterFactory = Callable[..., PolarsRayCluster]
-TestQuery = Callable[..., pl.DataFrame | None]
+RayClusterConfigFactory = typing.Callable[..., PolarsRayClusterConfig]
+RayClusterFactory = typing.Callable[..., PolarsRayCluster]
+TestQuery = typing.Callable[..., pl.DataFrame | None]
 
 RAY_GCS_PORT = 6379
 RAY_CLIENT_PORT = 10001
@@ -79,7 +79,7 @@ def _python_path() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def ray_head() -> Iterator[None]:
+def ray_head() -> typing.Iterator[None]:
     """Start a detached Ray head node for the session."""
     os.environ["LD_LIBRARY_PATH"] = _ld_library_path()
     os.environ["PYTHONPATH"] = _python_path()
@@ -115,7 +115,7 @@ def ray_head() -> Iterator[None]:
 @pytest.fixture
 def ray_cluster(
     ray_cluster_config: RayClusterConfigFactory,
-) -> Iterator[RayClusterFactory]:
+) -> typing.Iterator[RayClusterFactory]:
     started: list[PolarsRayCluster] = []
 
     def _factory(**kwargs) -> PolarsRayCluster:

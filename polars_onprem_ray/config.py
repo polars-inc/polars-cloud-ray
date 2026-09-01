@@ -903,12 +903,12 @@ class PolarsRayClusterConfig(BaseModel):
         return toml.dumps(doc)
 
 
-class PolarsOnPremLicenseServerRuntimeConfig(BaseModel):
+class PolarsLicenseServerRuntimeConfig(BaseModel):
     """Runtime configuration for a `pc-license-server` process.
 
-    Distinct from `PolarsOnPremLicenseServerConfig`, which only holds the `uri`
-    consumers (a scheduler/worker) point at to validate their license against a
-    license server; this config runs the server itself.
+    Distinct from `PolarsLicenseServerConfig`, which only holds the `uri` consumers (a
+    scheduler/worker) point at to validate their license against a license server; this
+    config runs the server itself.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -7,33 +7,33 @@ import ray
 from ray.exceptions import GetTimeoutError
 
 from polars_onprem_ray.actors import (
-    PolarsOnPremLicenseServerActor,
+    PolarsLicenseServerActor,
     resolve_license_server_name,
     terminate_actors,
 )
-from polars_onprem_ray.config import PolarsOnPremLicenseServerRuntimeConfig
+from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
 
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-class PolarsOnPremLicenseServer:
+class PolarsLicenseServer:
     """Manage the lifecycle of the standalone license server actor.
 
     ```py
     import ray
 
-    from polars_onprem_ray.config import PolarsOnPremLicenseServerRuntimeConfig
-    from polars_onprem_ray.license_server import PolarsOnPremLicenseServer
+    from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
+    from polars_onprem_ray.license_server import PolarsLicenseServer
 
-    config = PolarsOnPremLicenseServerRuntimeConfig(
+    config = PolarsLicenseServerRuntimeConfig(
         report_dir="/var/log/polars/license-server",
         license_path="/etc/polars/license.json",
         tls_bundle_path="/etc/polars/tls-bundle.pem",
     )
 
     ray.init(address="auto", namespace="polars-onprem-license-server")
-    license_server = PolarsOnPremLicenseServer(config)
+    license_server = PolarsLicenseServer(config)
     license_server.start()
 
     print(license_server.get_bind_addr())
@@ -43,7 +43,7 @@ class PolarsOnPremLicenseServer:
     ```
     """
 
-    def __init__(self, config: PolarsOnPremLicenseServerRuntimeConfig) -> None:
+    def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
         self.config = config
 
         self._actor: typing.Any = None
@@ -59,7 +59,7 @@ class PolarsOnPremLicenseServer:
             logger.info("Reconnected to existing license server actor")
             return
 
-        self._actor = PolarsOnPremLicenseServerActor.options(  # type: ignore[attr-defined]
+        self._actor = PolarsLicenseServerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             lifetime="detached",
             resources={"head": 0.001},  # pinning

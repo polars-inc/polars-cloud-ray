@@ -7,7 +7,7 @@ import urllib.request
 import ray
 
 from polars_onprem_ray.actors.utils import _handle_sigterm, _resolve_host, _stop
-from polars_onprem_ray.config import PolarsOnPremLicenseServerRuntimeConfig
+from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
 
@@ -19,11 +19,11 @@ def resolve_license_server_name() -> str:
 
 
 @ray.remote
-class PolarsOnPremLicenseServerActor:
+class PolarsLicenseServerActor:
     """The air-gapped offline license validation and reporting service."""
 
-    def __init__(self, config: PolarsOnPremLicenseServerRuntimeConfig) -> None:
-        self.config: PolarsOnPremLicenseServerRuntimeConfig = config
+    def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
+        self.config: PolarsLicenseServerRuntimeConfig = config
 
         self.host: str = _resolve_host()
 

@@ -6,10 +6,10 @@ import time
 import pytest
 import ray
 
-from polars_onprem_ray.actors import PolarsOnPremLicenseServerActor
+from polars_onprem_ray.actors import PolarsLicenseServerActor
 from polars_onprem_ray.config import (
-    PolarsOnPremLicenseServerConfig,
-    PolarsOnPremLicenseServerRuntimeConfig,
+    PolarsLicenseServerConfig,
+    PolarsLicenseServerRuntimeConfig,
 )
 
 from .conftest import RayClusterFactory, _free_port
@@ -62,7 +62,7 @@ def test_license_server_reporting(
     tmp_path: pathlib.Path,
     ray_cluster: RayClusterFactory,
 ) -> None:
-    config = PolarsOnPremLicenseServerRuntimeConfig(
+    config = PolarsLicenseServerRuntimeConfig(
         binary_path=os.environ["BINARY_PATH_LICENSE_SERVER"],
         grpc_port=_free_port(),
         http_port=_free_port(),
@@ -71,7 +71,7 @@ def test_license_server_reporting(
         tls_bundle_path=os.environ["TLS_BUNDLE_PATH"],
     )
 
-    license_server = PolarsOnPremLicenseServerActor.remote(config)
+    license_server = PolarsLicenseServerActor.remote(config)
 
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
@@ -84,7 +84,7 @@ def test_license_server_reporting(
 
     try:
         cluster = ray_cluster(
-            license=PolarsOnPremLicenseServerConfig(
+            license=PolarsLicenseServerConfig(
                 uri=ray.get(license_server.get_bind_addr.remote())
             ),
         )
