@@ -901,3 +901,74 @@ class PolarsRayClusterConfig(BaseModel):
             doc["lineage"] = lineage
 
         return toml.dumps(doc)
+
+
+class PolarsLicenseServerRuntimeConfig(BaseModel):
+    """Runtime configuration for a `pc-license-server` process.
+
+    Distinct from `PolarsLicenseServerConfig`, which only holds the `uri` consumers (a
+    scheduler/worker) point at to validate their license against a license server; this
+    config runs the server itself.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # runtime configuration
+    binary_path: str = Field(
+        default="pc-license-server",
+        description="Path to the binary.",
+    )
+    startup_timeout: int = Field(
+        default=10,
+        description="Seconds to wait for the license server to become ready.",
+    )
+    actor_response_timeout: int = Field(
+        default=30,
+        description="Seconds to wait for actor calls to complete before giving up.",
+    )
+    cpu_max: int = Field(
+        default=1,
+        description="Number of CPU cores requested for the license server actor.",
+    )
+    memory_max: int = Field(
+        default=30000000,
+        description="Max memory, in bytes, requested for the license server actor.",
+    )
+
+    # native binary configuration
+    grpc_port: int = Field(
+        default=50051,
+        description="Port for the gRPC (TLS) service pc-cublet registers/pings against.",
+    )
+    http_port: int = Field(
+        default=8081,
+        description="Port for the plain-HTTP `/healthz`, `/readyz`, `/metrics` probes.",
+    )
+    report_dir: str = Field(
+        description="Directory holding the SQLite state DB and the signed report ledger.",
+    )
+    license_path: str = Field(
+        description="Path to the Polars-signed license file.",
+    )
+    tls_bundle_path: str = Field(
+        description="Path to the combined PEM bundle holding the license-server TLS material.",
+    )
+    db_disable_file_locking: bool = Field(
+        default=False,
+        description=(
+            "Open the SQLite state DB with file locking disabled. Only safe on a "
+            "single-writer deployment; see the binary's own flag documentation."
+        ),
+    )
+
+    def env(self) -> dict[str, str]:
+        env = {
+            "PC_LICENSE_SERVER_BIND": f"0.0.0.0:{self.grpc_port}",
+            "PC_LICENSE_SERVER_HEALTH_BIND": f"0.0.0.0:{self.http_port}",
+            "PC_LICENSE_SERVER_REPORT_DIR": self.report_dir,
+            "PC_LICENSE_SERVER_LICENSE": self.license_path,
+            "PC_LICENSE_SERVER_TLS_BUNDLE_PATH": self.tls_bundle_path,
+        }
+        if self.db_disable_file_locking:
+            env["PC_LICENSE_SERVER_DB_DISABLE_FILE_LOCKING"] = "true"
+        return env
