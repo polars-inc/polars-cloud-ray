@@ -52,7 +52,7 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            status = ray.get(
+            status = ray.get(  # type:ignore[var-annotated]
                 self._scheduler_actor().get_scaling_status.remote(),
                 timeout=self.server.actor_response_timeout,
             )

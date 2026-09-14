@@ -23,10 +23,6 @@ jobs:
       contents: read
     timeout-minutes: 5
     steps:
-      # https://github.com/marketplace/actions/runs-on-action
-      - name: Configure self-hosted runner
-        uses: runs-on/action@46910bf61b41721b0579f237e186afb35477007a
-
       # https://github.com/marketplace/actions/checkout
       - name: Check out codebase
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

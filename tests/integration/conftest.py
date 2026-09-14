@@ -221,7 +221,10 @@ def run_query() -> TestQuery:
         )
 
         if min_workers is not None or max_workers is not None:
-            query = query.distributed(min_workers=min_workers, max_workers=max_workers)
+            query = query.distributed(  # type:ignore[assignment]
+                min_workers=min_workers,
+                max_workers=max_workers,
+            )
 
         return query.execute().head
 

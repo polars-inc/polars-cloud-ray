@@ -27,6 +27,7 @@ __all__ = [
     "PolarsCheckpointConfig",
     "PolarsEnterpriseLicenseConfig",
     "PolarsLicenseConfig",
+    "PolarsLicenseServer",
     "PolarsLicenseServerActor",
     "PolarsLicenseServerConfig",
     "PolarsLicenseServerRuntimeConfig",
