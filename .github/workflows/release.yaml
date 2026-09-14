@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Dry run
+        type: boolean
+        default: true
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.WORKFLOW }}-${{ github.REF }}
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: Check out codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # https://github.com/marketplace/actions/astral-sh-setup-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          # deliberately uncached: whatever lands in `dist/` gets published
+          enable-cache: false
+          # lowest supported version
+          python-version: "3.10"
+
+      - name: Build the source distribution and wheel
+        run: |
+          uv build --out-dir dist
+
+      - name: Test the artifacts
+        run: |
+          for f in dist/*.tar.gz dist/*.whl; do
+            uv venv --python=3.10 /tmp/smoke-test
+            VIRTUAL_ENV=/tmp/smoke-test uv pip install --reinstall "$f"
+            /tmp/smoke-test/bin/python -c 'import polars_onprem_ray'
+            rm -fr /tmp/smoke-test
+          done
+
+      # https://github.com/marketplace/actions/pypi-publish
+      - name: Publish to PyPI
+        if: ${{ inputs.dry-run == false }}
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          skip-existing: true
