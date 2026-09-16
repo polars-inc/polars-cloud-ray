@@ -57,16 +57,16 @@ jobs:
           chmod +x _bin/pc-cublet _bin/pc-license-server
         env:
           PC_CUBLET_VERSION: ${{ inputs.pc-cublet-version || '0.8.5' }}
-          PC_LICENSE_SERVER_VERSION: ${{ inputs.pc-license-server-version || '0.1.0' }}
+          PC_LICENSE_SERVER_VERSION: ${{ inputs.pc-license-server-version || '0.1.1' }}
 
-      - name: Materialise the license and TLS bundle
+      - name: Materialize the license and TLS bundle
         run: |
           mkdir --parents _etc
-          echo "$LICENSE_B64" | base64 --decode > _etc/license.json
-          echo "$TLS_BUNDLE_B64" | base64 --decode > _etc/tls-bundle.pem
+          echo "$LICENSE" > _etc/license.json
+          echo "$TLS_BUNDLE" > _etc/tls-bundle.pem
         env:
-          LICENSE_B64: ${{ secrets.POLARS_ONPREM_LICENSE }}
-          TLS_BUNDLE_B64: ${{ secrets.POLARS_ONPREM_TLS_BUNDLE }}
+          LICENSE: ${{ secrets.LICENSE }}
+          TLS_BUNDLE: ${{ secrets.TLS_BUNDLE }}
 
       - name: Install dependencies
         run: |
