@@ -169,7 +169,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             ),
             scheduler=PolarsSchedulerConfig(
                 # cluster configuration
-                cpus_hint=1,
+                cpus_hint=0,
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
@@ -183,7 +183,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             ),
             worker=PolarsWorkerConfig(
                 # cluster configuration
-                cpus_hint=1,
+                cpus_hint=0,
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,

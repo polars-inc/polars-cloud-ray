@@ -54,9 +54,9 @@ jobs:
           mkdir --parents _bin
           wget --no-verbose https://cdn.onprem.pola.rs/polars-on-premises-$PC_CUBLET_VERSION-linux-x64 --output-document=_bin/pc-cublet
           wget --no-verbose https://cdn.onprem.pola.rs/license-server-$PC_LICENSE_SERVER_VERSION-linux-x64 --output-document=_bin/pc-license-server
-          chmod +x _bin/pc-cublet _bin/pc-license-server
+          chmod +x _bin/pc-*
         env:
-          PC_CUBLET_VERSION: ${{ inputs.pc-cublet-version || '0.8.5' }}
+          PC_CUBLET_VERSION: ${{ inputs.pc-cublet-version || '0.8.6' }}
           PC_LICENSE_SERVER_VERSION: ${{ inputs.pc-license-server-version || '0.1.1' }}
 
       - name: Materialize the license and TLS bundle
@@ -71,6 +71,7 @@ jobs:
       - name: Install dependencies
         run: |
           make .venv
+          source .venv/bin/activate
           uv pip install pytest-github-actions-annotate-failures
 
       - name: Run integration tests

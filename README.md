@@ -164,13 +164,16 @@ scale.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
 > [!NOTE]
-> Avoid setting `num_workers=1` if you want queries to ever trigger a scale-up.
+> Avoid leaving `default_workers_per_query` at `1` if you want queries to ever
+> trigger a scale-up.
 >
-> The current version of the Polars On-Prem binary plans a query as single-node
-> -bypassing the autoscaler entirely- whenever its statically configured worker
-> count (`n_workers`) is `1` or fewer; this configuration attribute is optional
-> however, and the wrapper attribute `num_workers` exposed in this Python package
-> is only sent to the binary when its value is different than `0`.
+> A query that does not request a worker count is capped at
+> `default_workers_per_query`, which this package seeds from `num_workers`, then
+> `min_workers`, then `1` when autoscaling is enabled. Set it explicitly on
+> `PolarsSchedulerConfig`, or request workers per query via
+> `.distributed(min_workers=X)`, to scale past it. `max_workers_per_query` bounds
+> what any single query may claim, and is seeded from `max_workers`, then
+> `num_workers`.
 
 ## License server
 

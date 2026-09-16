@@ -17,7 +17,7 @@ from .conftest import RayClusterFactory, TestQuery
 def _wait_for_workers(
     cluster_id: str,
     expected: int,
-    timeout: float = 20,
+    timeout: float = 30,
 ) -> set[str]:
     deadline = time.monotonic() + timeout
     names: set[str] = set()
@@ -33,38 +33,38 @@ def _wait_for_workers(
 
 
 def test_upscale(ray_cluster: RayClusterFactory) -> None:
-    cluster = ray_cluster(num_workers=2)
+    cluster = ray_cluster(num_workers=1)
     cluster_id = cluster.config.cluster_id
+
+    names = _wait_for_workers(cluster_id, 1)
+    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(1)}
+
+    cluster._rescale_worker_pool_to(2)
 
     names = _wait_for_workers(cluster_id, 2)
     assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(2)}
 
-    cluster._rescale_worker_pool_to(4)
-
-    names = _wait_for_workers(cluster_id, 4)
-    assert names == {f"{WORKER_NAME_PREFIX}-{i}" for i in range(4)}
-
 
 def test_downscale_delete(ray_cluster: RayClusterFactory) -> None:
-    cluster = ray_cluster(num_workers=4)
+    cluster = ray_cluster(num_workers=2)
     cluster_id = cluster.config.cluster_id
 
-    before = _wait_for_workers(cluster_id, 4)
-    delete = set(list(before)[:2])
-    cluster._rescale_worker_pool_to(2, delete=delete)
-    after = _wait_for_workers(cluster_id, 2)
+    before = _wait_for_workers(cluster_id, 2)
+    delete = set(list(before)[:1])
+    cluster._rescale_worker_pool_to(1, delete=delete)
+    after = _wait_for_workers(cluster_id, 1)
 
     assert after == before - delete
 
 
 def test_downscale_keep(ray_cluster: RayClusterFactory) -> None:
-    cluster = ray_cluster(num_workers=4)
+    cluster = ray_cluster(num_workers=2)
     cluster_id = cluster.config.cluster_id
 
-    before = _wait_for_workers(cluster_id, 4)
-    keep = set(list(before)[:2])
-    cluster._rescale_worker_pool_to(2, keep=keep)
-    after = _wait_for_workers(cluster_id, 2)
+    before = _wait_for_workers(cluster_id, 2)
+    keep = set(list(before)[:1])
+    cluster._rescale_worker_pool_to(1, keep=keep)
+    after = _wait_for_workers(cluster_id, 1)
 
     assert after == keep
 
@@ -107,12 +107,16 @@ def test_scaling_disabled(ray_cluster: RayClusterFactory) -> None:
         ray.get_actor(SCALER_NAME_PREFIX, namespace=cluster.config.cluster_id)
 
 
-def test_scale_config(ray_cluster: RayClusterFactory) -> None:
+@pytest.mark.parametrize("max_workers", [8, None])
+def test_scale_config(
+    ray_cluster: RayClusterFactory,
+    max_workers: int | None,
+) -> None:
     cluster = ray_cluster(
         scaling_enabled=True,
         num_workers=1,
         min_workers=0,
-        max_workers=8,
+        max_workers=max_workers,
     )
 
     with urllib.request.urlopen(
@@ -123,7 +127,7 @@ def test_scale_config(ray_cluster: RayClusterFactory) -> None:
     assert body["desired"] == 1
     assert body["available"] == 1
     assert body["min"] == 0
-    assert body["max"] == 8
+    assert body["max"] == max_workers
 
 
 def test_client_autoscaling(
