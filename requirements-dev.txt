@@ -1,7 +1,11 @@
-polars==1.43.2
-polars-cloud==0.10.0
+mypy==1.20.1
+polars==1.44.2
+polars-cloud==0.11.2
 psutil==7.2.2
 pydantic==2.13.4
 pytest==9.1.1
 ray[default]==2.55.1
+ruff==0.16.4
 toml==0.10.2
+types-psutil==7.2.2.20260906
+types-toml==0.10.8.20260518

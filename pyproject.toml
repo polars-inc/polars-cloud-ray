@@ -23,6 +23,17 @@ build-backend = "hatchling.build"
 
 # copy-pasted from polars-cloud
 
+[tool.mypy]
+files = [
+  "$MYPY_CONFIG_FILE_DIR/polars_onprem_ray",
+  "$MYPY_CONFIG_FILE_DIR/tests",
+]
+enable_error_code = [
+  "ignore-without-code",
+  "redundant-expr",
+  "truthy-bool",
+]
+
 [tool.ruff]
 line-length = 88
 fix = true

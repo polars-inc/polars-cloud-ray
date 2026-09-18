@@ -97,7 +97,7 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
             func()
         finally:
             if callable(previous_handler):
-                previous_handler(signum, frame)  # type: ignore
+                previous_handler(signum, frame)  # type: ignore[arg-type]
 
     signal.signal(signal.SIGTERM, _handler)
 

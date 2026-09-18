@@ -71,7 +71,7 @@ def test_license_server_reporting(
         tls_bundle_path=os.environ["TLS_BUNDLE_PATH"],
     )
 
-    license_server = PolarsLicenseServerActor.remote(config)
+    license_server = PolarsLicenseServerActor.remote(config)  # type: ignore[attr-defined]
 
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:

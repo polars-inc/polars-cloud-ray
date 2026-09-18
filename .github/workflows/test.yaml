@@ -1,0 +1,83 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      pc-cublet-version:
+        description: Version of the Polars On-Prem binary to test against
+        required: false
+        type: string
+      pc-license-server-version:
+        description: Version of the Polars License Server binary to test against
+        required: false
+        type: string
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.WORKFLOW }}-${{ github.REF }}
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: Check out codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # https://github.com/marketplace/actions/astral-sh-setup-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          cache-python: true
+          enable-cache: true
+          ignore-nothing-to-cache: true
+          prune-cache: false
+          python-version: "3.12"
+
+      - name: Download the binaries
+        run: |
+          mkdir --parents _bin
+          wget --no-verbose https://cdn.onprem.pola.rs/polars-on-premises-$PC_CUBLET_VERSION-linux-x64 --output-document=_bin/pc-cublet
+          wget --no-verbose https://cdn.onprem.pola.rs/license-server-$PC_LICENSE_SERVER_VERSION-linux-x64 --output-document=_bin/pc-license-server
+          chmod +x _bin/pc-*
+        env:
+          PC_CUBLET_VERSION: ${{ inputs.pc-cublet-version || '0.8.6' }}
+          PC_LICENSE_SERVER_VERSION: ${{ inputs.pc-license-server-version || '0.1.1' }}
+
+      - name: Materialize the license and TLS bundle
+        run: |
+          mkdir --parents _etc
+          echo "$LICENSE" > _etc/license.json
+          echo "$TLS_BUNDLE" > _etc/tls-bundle.pem
+        env:
+          LICENSE: ${{ secrets.LICENSE }}
+          TLS_BUNDLE: ${{ secrets.TLS_BUNDLE }}
+
+      - name: Install dependencies
+        run: |
+          make .venv
+          source .venv/bin/activate
+          uv pip install pytest-github-actions-annotate-failures
+
+      - name: Run integration tests
+        run: |
+          make test
+
+      - name: Run license server tests (5 mins idling time)
+        run: |
+          make test-license-server

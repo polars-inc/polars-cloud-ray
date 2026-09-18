@@ -169,7 +169,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             ),
             scheduler=PolarsSchedulerConfig(
                 # cluster configuration
-                cpus_hint=1,
+                cpus_hint=0,
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
@@ -183,7 +183,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             ),
             worker=PolarsWorkerConfig(
                 # cluster configuration
-                cpus_hint=1,
+                cpus_hint=0,
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
@@ -221,7 +221,10 @@ def run_query() -> TestQuery:
         )
 
         if min_workers is not None or max_workers is not None:
-            query = query.distributed(min_workers=min_workers, max_workers=max_workers)
+            query = query.distributed(  # type:ignore[assignment]
+                min_workers=min_workers,
+                max_workers=max_workers,
+            )
 
         return query.execute().head
 

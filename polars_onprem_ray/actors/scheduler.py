@@ -148,15 +148,13 @@ class PolarsSchedulerActor:
         """Return the OS process ID of the scheduler binary subprocess."""
         return self._process.pid if self._process is not None else None
 
-    def get_scaling_status(self) -> dict[str, int | set[str]]:
+    def get_scaling_status(self) -> dict[str, int | set[str] | None]:
         """Return the current/desired worker counts and configured bounds."""
         return {
             "available": list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX),
             "desired": self.num_workers,
             "min": self.config.min_workers,
-            # unbounded scaling is set to u32::MAX in the rust code, which
-            # translates to the following hex value; this value is non-optional
-            "max": self.config.max_workers or 0xFFFFFFFF,
+            "max": self.config.max_workers,
         }
 
     def rescale_worker_pool_to(

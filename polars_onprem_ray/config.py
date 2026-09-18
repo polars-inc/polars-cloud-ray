@@ -538,6 +538,21 @@ class PolarsSchedulerConfig(BaseModel):
             "query."
         ),
     )
+    max_workers_per_query: int | None = Field(
+        default=None,
+        description=(
+            "Upper bound on the number of workers a single query may use. Defaults to "
+            "the cluster's own bounds; unbounded if neither is set."
+        ),
+    )
+    default_workers_per_query: int | None = Field(
+        default=None,
+        description=(
+            "Number of workers a query uses when it does not request a count. Defaults "
+            "to the cluster's own sizing; required by the binary when autoscaling is "
+            "enabled."
+        ),
+    )
     checkpoint: PolarsCheckpointConfig | None = Field(
         default=None,
         description="Scheduler checkpointing configuration. Disabled if unset.",
@@ -565,7 +580,12 @@ class PolarsSchedulerConfig(BaseModel):
     def config_license(self, license_: PolarsLicenseConfig) -> dict:
         return license_.config()
 
-    def config(self, num_workers: int) -> dict:
+    def config(
+        self,
+        num_workers: int,
+        min_workers: int,
+        max_workers: int | None,
+    ) -> dict:
         client_service: dict = {"bind_addr": f":{self.client_port}"}
         if self.connection is not None:
             client_service["connection"] = self.connection.config()
@@ -581,8 +601,16 @@ class PolarsSchedulerConfig(BaseModel):
             "worker_service": {"bind_addr": f":{self.worker_registration_port}"},
         }
 
-        if num_workers > 0:
-            d["n_workers"] = num_workers
+        max_per_query = self.max_workers_per_query or max_workers or num_workers
+        default_per_query = self.default_workers_per_query or num_workers or min_workers
+
+        if not default_per_query and self.scaling.enabled:
+            default_per_query = 1
+
+        if max_per_query:
+            d["max_workers_per_query"] = max_per_query
+        if default_per_query:
+            d["default_workers_per_query"] = default_per_query
         if self.default_partitions_per_worker is not None:
             d["default_partitions_per_worker"] = self.default_partitions_per_worker
         if self.anonymous_result is not None:
@@ -714,7 +742,7 @@ class PolarsRayClusterConfig(BaseModel):
         description="Ray actor restart limit for workers (-1 = unlimited).",
     )
     worker_startup_timeout: int = Field(
-        default=10,
+        default=30,
         description="Seconds to wait for the scheduler and workers to become ready.",
     )
     actor_response_timeout: int = Field(
@@ -859,7 +887,11 @@ class PolarsRayClusterConfig(BaseModel):
             ),
             "license": self.scheduler.config_license(self.license),
             "static_leader": self.scheduler.config_static_leader(scheduler_host),
-            "scheduler": self.scheduler.config(self.num_workers),
+            "scheduler": self.scheduler.config(
+                self.num_workers,
+                self.min_workers,
+                self.max_workers,
+            ),
             "observatory": self.scheduler.observatory.config(),
             "monitoring": self.monitoring.config(),
             "scaling": self.scheduler.scaling.config(),
@@ -919,7 +951,7 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
         description="Path to the binary.",
     )
     startup_timeout: int = Field(
-        default=10,
+        default=30,
         description="Seconds to wait for the license server to become ready.",
     )
     actor_response_timeout: int = Field(

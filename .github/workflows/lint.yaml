@@ -1,0 +1,76 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.WORKFLOW }}-${{ github.REF }}
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 5
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: Check out codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # https://github.com/marketplace/actions/astral-sh-setup-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          cache-python: true
+          enable-cache: true
+          ignore-nothing-to-cache: true
+          prune-cache: false
+          python-version: "3.12"
+
+      - name: Install and run Ruff
+        run: |
+          uv venv
+          source .venv/bin/activate
+          uv pip install ruff==$(grep -m 1 -oP 'ruff==\K(.*)' requirements-dev.txt)
+          ruff check polars_onprem_ray/ tests/ --no-fix
+          ruff format polars_onprem_ray/ tests/ --diff
+
+  mypy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: Check out codebase
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # https://github.com/marketplace/actions/astral-sh-setup-uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          cache-python: true
+          enable-cache: true
+          ignore-nothing-to-cache: true
+          prune-cache: false
+          python-version: "3.12"
+
+      - name: Install and run MyPy
+        run: |
+          make .venv
+          source .venv/bin/activate
+          mypy
