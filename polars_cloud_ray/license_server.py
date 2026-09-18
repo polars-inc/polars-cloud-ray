@@ -6,12 +6,12 @@ import typing
 import ray
 from ray.exceptions import GetTimeoutError
 
-from polars_onprem_ray.actors import (
+from polars_cloud_ray.actors import (
     PolarsLicenseServerActor,
     resolve_license_server_name,
     terminate_actors,
 )
-from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
 
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
@@ -23,8 +23,8 @@ class PolarsLicenseServer:
     ```py
     import ray
 
-    from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
-    from polars_onprem_ray.license_server import PolarsLicenseServer
+    from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
+    from polars_cloud_ray.license_server import PolarsLicenseServer
 
     config = PolarsLicenseServerRuntimeConfig(
         report_dir="/var/log/polars/license-server",

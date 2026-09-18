@@ -50,7 +50,7 @@ jobs:
           for f in dist/*.tar.gz dist/*.whl; do
             uv venv --python=3.10 /tmp/smoke-test
             VIRTUAL_ENV=/tmp/smoke-test uv pip install --reinstall "$f"
-            /tmp/smoke-test/bin/python -c 'import polars_onprem_ray'
+            /tmp/smoke-test/bin/python -c 'import polars_cloud_ray'
             rm -fr /tmp/smoke-test
           done
 

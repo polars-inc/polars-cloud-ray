@@ -6,7 +6,7 @@ import typing
 import ray
 from ray.exceptions import GetTimeoutError
 
-from polars_onprem_ray.actors import (
+from polars_cloud_ray.actors import (
     WORKER_NAME_PREFIX,
     PolarsScalerActor,
     PolarsSchedulerActor,
@@ -18,7 +18,7 @@ from polars_onprem_ray.actors import (
     resolve_worker_name,
     terminate_actors,
 )
-from polars_onprem_ray.config import PolarsRayClusterConfig
+from polars_cloud_ray.config import PolarsRayClusterConfig
 
 logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class PolarsRayCluster:
     import polars_cloud as pc
     import ray
 
-    from polars_onprem_ray.cluster import PolarsRayCluster
-    from polars_onprem_ray.config import (
+    from polars_cloud_ray.cluster import PolarsRayCluster
+    from polars_cloud_ray.config import (
         PolarsObservatoryConfig,
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,

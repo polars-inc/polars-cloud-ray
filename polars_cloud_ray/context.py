@@ -1,6 +1,6 @@
 from polars_cloud import ClientOptions, ClusterContext
 
-from polars_onprem_ray.cluster import PolarsRayCluster
+from polars_cloud_ray.cluster import PolarsRayCluster
 
 
 class RayClusterContext(PolarsRayCluster, ClusterContext):
@@ -10,13 +10,13 @@ class RayClusterContext(PolarsRayCluster, ClusterContext):
     import polars as pl
     import ray
 
-    from polars_onprem_ray.config import (
+    from polars_cloud_ray.config import (
         PolarsObservatoryConfig,
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
         PolarsServiceAccountLicenseConfig,
     )
-    from polars_onprem_ray.context import RayClusterContext
+    from polars_cloud_ray.context import RayClusterContext
 
     config = PolarsRayClusterConfig(
         # single_host_cluster=True,

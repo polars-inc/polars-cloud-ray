@@ -6,9 +6,9 @@ import threading
 import ray
 from ray.actor import ActorHandle
 
-from polars_onprem_ray.actors.scheduler import resolve_scheduler_name
-from polars_onprem_ray.actors.utils import _handle_sigterm
-from polars_onprem_ray.config import PolarsRayClusterConfig
+from polars_cloud_ray.actors.scheduler import resolve_scheduler_name
+from polars_cloud_ray.actors.utils import _handle_sigterm
+from polars_cloud_ray.config import PolarsRayClusterConfig
 
 SCALER_NAME_PREFIX = "scaler"
 

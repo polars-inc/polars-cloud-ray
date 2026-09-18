@@ -6,7 +6,7 @@ import tempfile
 
 import ray
 
-from polars_onprem_ray.actors.utils import (
+from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
     _is_ready,
     _resolve_host,
@@ -16,13 +16,13 @@ from polars_onprem_ray.actors.utils import (
     resolve_actor_handles,
     terminate_actors,
 )
-from polars_onprem_ray.actors.worker import (
+from polars_cloud_ray.actors.worker import (
     WORKER_NAME_PREFIX,
     PolarsWorkerActor,
     _resolve_worker_name_regex,
     resolve_worker_name,
 )
-from polars_onprem_ray.config import PolarsRayClusterConfig
+from polars_cloud_ray.config import PolarsRayClusterConfig
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 

@@ -1,11 +1,11 @@
-from polars_onprem_ray.actors import (
+from polars_cloud_ray.actors import (
     PolarsLicenseServerActor,
     PolarsScalerActor,
     PolarsSchedulerActor,
     PolarsWorkerActor,
 )
-from polars_onprem_ray.cluster import PolarsRayCluster
-from polars_onprem_ray.config import (
+from polars_cloud_ray.cluster import PolarsRayCluster
+from polars_cloud_ray.config import (
     PolarsCheckpointConfig,
     PolarsEnterpriseLicenseConfig,
     PolarsLicenseConfig,
@@ -20,8 +20,8 @@ from polars_onprem_ray.config import (
     PolarsServiceAccountLicenseConfig,
     PolarsWorkerConfig,
 )
-from polars_onprem_ray.context import RayClusterContext
-from polars_onprem_ray.license_server import PolarsLicenseServer
+from polars_cloud_ray.context import RayClusterContext
+from polars_cloud_ray.license_server import PolarsLicenseServer
 
 __all__ = [
     "PolarsCheckpointConfig",

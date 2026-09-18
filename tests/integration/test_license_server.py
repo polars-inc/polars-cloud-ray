@@ -6,8 +6,8 @@ import time
 import pytest
 import ray
 
-from polars_onprem_ray.actors import PolarsLicenseServerActor
-from polars_onprem_ray.config import (
+from polars_cloud_ray.actors import PolarsLicenseServerActor
+from polars_cloud_ray.config import (
     PolarsLicenseServerConfig,
     PolarsLicenseServerRuntimeConfig,
 )

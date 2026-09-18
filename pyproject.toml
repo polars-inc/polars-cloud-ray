@@ -1,5 +1,5 @@
 [project]
-name = "polars-onprem-ray"
+name = "polars-cloud-ray"
 version = "0.0.1"
 description = "Polars On-Prem over Ray"
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ build-backend = "hatchling.build"
 
 [tool.mypy]
 files = [
-  "$MYPY_CONFIG_FILE_DIR/polars_onprem_ray",
+  "$MYPY_CONFIG_FILE_DIR/polars_cloud_ray",
   "$MYPY_CONFIG_FILE_DIR/tests",
 ]
 enable_error_code = [

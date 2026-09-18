@@ -7,14 +7,14 @@ import tempfile
 
 import ray
 
-from polars_onprem_ray.actors.utils import (
+from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
     _is_ready,
     _resolve_host,
     _stop,
     _stop_orphans,
 )
-from polars_onprem_ray.config import PolarsRayClusterConfig
+from polars_cloud_ray.config import PolarsRayClusterConfig
 
 WORKER_NAME_PREFIX = "worker"
 
