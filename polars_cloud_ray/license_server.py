@@ -63,8 +63,8 @@ class PolarsLicenseServer:
             name=actor_name,
             lifetime="detached",
             resources={"head": 0.001},  # pinning
-            num_cpus=self.config.cpu_max,
-            memory=self.config.memory_max,
+            num_cpus=self.config.cpus_hint,
+            memory=self.config.memory_hint,
         ).remote(self.config)
 
     def _wait_for_actor(self) -> None:

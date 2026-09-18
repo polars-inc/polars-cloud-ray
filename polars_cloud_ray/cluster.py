@@ -38,20 +38,23 @@ class PolarsRayCluster:
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
         PolarsServiceAccountLicenseConfig,
+        PolarsWorkerConfig,
     )
 
     config = PolarsRayClusterConfig(
         # single_host_cluster=True,
         num_workers=4,
         license=PolarsServiceAccountLicenseConfig(
+            workspace_id="<WORKSPACE_ID>",
             client_id="<SERVICE_ACCOUNT_ID>",
             client_secret="<SERVICE_ACCOUNT_SECRET>",
         ),
         scheduler=PolarsSchedulerConfig(
             observatory=PolarsObservatoryConfig(
-                database_path="/tmp/polars/observatory"
+                database_path="/tmp/polars/observatory/observatory.db"
             ),
         ),
+        worker=PolarsWorkerConfig(),
     )
 
     ray.init(address="auto", namespace=config.cluster_id)

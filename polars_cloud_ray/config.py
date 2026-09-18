@@ -421,8 +421,8 @@ class PolarsScalingConfig(BaseModel):
     enabled: bool = Field(
         default=False,
         description=(
-            "Enable REST-based autoscaling module. When enabled, the scheduler actor "
-            "runs a local HTTP server that ou binary pushes scale requests to."
+            "Enable REST-based autoscaling module. When enabled, a dedicated scaler "
+            "actor runs a local HTTP server that our binary pushes scale requests to."
         ),
     )
     port: int = Field(
@@ -958,11 +958,11 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
         default=30,
         description="Seconds to wait for actor calls to complete before giving up.",
     )
-    cpu_max: int = Field(
+    cpus_hint: int = Field(
         default=1,
         description="Number of CPU cores requested for the license server actor.",
     )
-    memory_max: int = Field(
+    memory_hint: int = Field(
         default=30000000,
         description="Max memory, in bytes, requested for the license server actor.",
     )

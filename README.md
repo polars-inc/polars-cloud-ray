@@ -4,7 +4,7 @@ Runs the Polars On-Prem scheduler and workers as [Ray](https://www.ray.io/) acto
 
 ## Quickstart
 
-Prerequisites for a completely local test deployement:
+Prerequisites for a completely local test deployment:
 
 - A Polars On-Prem binary accessible on the machine
 - A Polars On-Prem `license.json` file, or a valid service account
@@ -45,7 +45,7 @@ If you do not already have one, create a Polars service account through the
 Pull the Polars On-Prem binary locally, and remember its local path:
 
 ```sh
-wget https://cdn.onprem.pola.rs/polars-on-premises-0.8.0-linux-x86
+wget https://cdn.onprem.pola.rs/polars-on-premises-0.8.6-linux-x86
 ```
 
 Spawn a local multinode cluster:
@@ -61,6 +61,7 @@ from polars_cloud_ray.config import (
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
     PolarsServiceAccountLicenseConfig,
+    PolarsWorkerConfig,
 )
 
 config = PolarsRayClusterConfig(
@@ -68,14 +69,16 @@ config = PolarsRayClusterConfig(
     num_workers=4,
     single_host_cluster=True,
     license=PolarsServiceAccountLicenseConfig(
+        workspace_id="<WORKSPACE_ID>",
         client_id="<SERVICE_ACCOUNT_ID>",
         client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
     scheduler=PolarsSchedulerConfig(
         observatory=PolarsObservatoryConfig(
-            database_path="/tmp/polars/observatory"
+            database_path="/tmp/polars/observatory/observatory.db"
         ),
     ),
+    worker=PolarsWorkerConfig(),
 )
 
 ray.init(address="auto", namespace=config.cluster_id)
@@ -105,6 +108,7 @@ from polars_cloud_ray.config import (
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
     PolarsServiceAccountLicenseConfig,
+    PolarsWorkerConfig,
 )
 from polars_cloud_ray.context import RayClusterContext
 
@@ -113,14 +117,16 @@ config = PolarsRayClusterConfig(
     num_workers=4,
     single_host_cluster=True,
     license=PolarsServiceAccountLicenseConfig(
+        workspace_id="<WORKSPACE_ID>",
         client_id="<SERVICE_ACCOUNT_ID>",
         client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
     scheduler=PolarsSchedulerConfig(
         observatory=PolarsObservatoryConfig(
-            database_path="/tmp/polars/observatory"
+            database_path="/tmp/polars/observatory/observatory.db"
         ),
     ),
+    worker=PolarsWorkerConfig(),
 )
 
 ray.init(address="auto", namespace=config.cluster_id)
@@ -138,10 +144,10 @@ ray.shutdown()
 ```
 
 In case Ray is running on a single host, set the `single_host_cluster`
-configuration attribute to `True` to offsets worker ports and avoid socket
+configuration attribute to `True` to offset worker ports and avoid socket
 collisions.
 
-The actors are running in `detached` mode and survive past the script: on can
+The actors are running in `detached` mode and survive past the script: one can
 reconnect with the same `ray.init()` and `cluster` gymnastics from another
 process.
 To clean all actors and underlying processes, Ray itself needs to be shutdown
@@ -161,6 +167,10 @@ Ray worker actors in response.
 Enable it via `PolarsScalingConfig` on the scheduler, and optionally set
 `min_workers` and/or `max_workers` on the cluster config to bound how far it may
 scale.
+Note the cluster always _starts_ `num_workers` workers: the bounds are advisory,
+reported back to the binary on `GET /scale_config` and seeded into
+`max_workers_per_query`. The scaler itself honours whatever count the binary asks
+for on `POST /scale_to` without clamping it.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
 > [!NOTE]
@@ -184,7 +194,7 @@ usage into signed reports it periodically emits (and optionally uploads to the
 control plane).
 
 It is standalone: unlike the scheduler/worker/scaler, it is not wired into
-`PolarsCluster`. It is meant to be a single, long-lived service that any number
+`PolarsRayCluster`. It is meant to be a single, long-lived service that any number
 of separate clusters register against, so its lifecycle (and Ray namespace) is
 managed independently, and it should be started _before_ any
 cluster that points at it.
@@ -222,13 +232,14 @@ process, call `ray.init()` with the same namespace it was started under, then
 
 Four parameters control resource usage:
 
-- `cpu_max` / `memory_max`: requested by Ray for bin-packing; not enforced at
-- the OS level.
-- `cpu_reserved`: a scheduling/accounting hint reported to the observatory;\
-- never enforced.
+- `cpus_hint` / `memory_hint`: forwarded verbatim as Ray's own `num_cpus` /
+  `memory` actor options, and used by Ray for bin-packing only; not enforced at
+  the OS level.
+- `cpu_reserved`: a scheduling/accounting hint consumed internally by the binary
+  for task placement and reported to the observatory; never enforced.
 - `memory_limit`: enforced by the binary itself via cgroups; but only if a
-- _delegated cgroup subtree is made available_ (_e.g._, inside a container or a
-- scoped `systemd-run`).
+  _delegated cgroup subtree is made available_ (_e.g._, inside a container or a
+  scoped `systemd-run`).
 
 A plain session/SSH shell does not provide one (everything lives flatly in one
 cgroup), so `memory_limit` fails outright with the following message:
