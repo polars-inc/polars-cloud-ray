@@ -13,7 +13,7 @@ Prerequisites for a completely local test deployement:
 ```sh
 uv venv
 source .venv/bin/activate
-uv pip install polars-onprem-ray
+uv pip install polars-cloud-ray
 ```
 
 It will also install `ray` as a dependency.
@@ -55,8 +55,8 @@ import polars as pl
 import polars_cloud as pc
 import ray
 
-from polars_onprem_ray.cluster import PolarsRayCluster
-from polars_onprem_ray.config import (
+from polars_cloud_ray.cluster import PolarsRayCluster
+from polars_cloud_ray.config import (
     PolarsObservatoryConfig,
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
@@ -100,13 +100,13 @@ or:
 import polars as pl
 import ray
 
-from polars_onprem_ray.config import (
+from polars_cloud_ray.config import (
     PolarsObservatoryConfig,
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
     PolarsServiceAccountLicenseConfig,
 )
-from polars_onprem_ray.context import RayClusterContext
+from polars_cloud_ray.context import RayClusterContext
 
 config = PolarsRayClusterConfig(
     binary_path="/path/to/binary",
@@ -192,8 +192,8 @@ cluster that points at it.
 ```py
 import ray
 
-from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
-from polars_onprem_ray.license_server import PolarsLicenseServer
+from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.license_server import PolarsLicenseServer
 
 config = PolarsLicenseServerRuntimeConfig(
     report_dir="/var/log/polars/license-server",
@@ -209,7 +209,7 @@ license_server.start()
 A cluster then validates against it with:
 
 ```py
-from polars_onprem_ray.config import PolarsLicenseServerConfig
+from polars_cloud_ray.config import PolarsLicenseServerConfig
 
 license = PolarsLicenseServerConfig(uri=license_server.get_bind_addr())
 ```

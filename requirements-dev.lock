@@ -109,7 +109,7 @@ polars==1.44.2
     # via
     #   -r requirements-dev.txt
     #   polars-cloud
-polars-cloud==0.11.2
+polars-cloud==0.11.3
     # via -r requirements-dev.txt
 polars-runtime-32==1.44.2
     # via polars

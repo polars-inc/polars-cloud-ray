@@ -8,7 +8,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.util.state import list_actors
 
-from polars_onprem_ray.actors import SCHEDULER_NAME_PREFIX, WORKER_NAME_PREFIX
+from polars_cloud_ray.actors import SCHEDULER_NAME_PREFIX, WORKER_NAME_PREFIX
 
 from .conftest import RayClusterFactory, TestQuery
 

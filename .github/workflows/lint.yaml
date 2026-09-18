@@ -44,8 +44,8 @@ jobs:
           uv venv
           source .venv/bin/activate
           uv pip install ruff==$(grep -m 1 -oP 'ruff==\K(.*)' requirements-dev.txt)
-          ruff check polars_onprem_ray/ tests/ --no-fix
-          ruff format polars_onprem_ray/ tests/ --diff
+          ruff check polars_cloud_ray/ tests/ --no-fix
+          ruff format polars_cloud_ray/ tests/ --diff
 
   mypy:
     runs-on: ubuntu-latest

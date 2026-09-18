@@ -6,8 +6,8 @@ import urllib.request
 
 import ray
 
-from polars_onprem_ray.actors.utils import _handle_sigterm, _resolve_host, _stop
-from polars_onprem_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.actors.utils import _handle_sigterm, _resolve_host, _stop
+from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
 

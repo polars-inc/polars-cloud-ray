@@ -12,8 +12,8 @@ import polars_cloud as pc
 import pytest
 import ray
 
-from polars_onprem_ray.cluster import PolarsRayCluster
-from polars_onprem_ray.config import (
+from polars_cloud_ray.cluster import PolarsRayCluster
+from polars_cloud_ray.config import (
     PolarsEnterpriseLicenseConfig,
     PolarsLicenseConfig,
     PolarsMonitoringConfig,
@@ -23,7 +23,7 @@ from polars_onprem_ray.config import (
     PolarsSchedulerConfig,
     PolarsWorkerConfig,
 )
-from polars_onprem_ray.context import RayClusterContext
+from polars_cloud_ray.context import RayClusterContext
 
 RayClusterConfigFactory = typing.Callable[..., PolarsRayClusterConfig]
 RayClusterFactory = typing.Callable[..., PolarsRayCluster]
