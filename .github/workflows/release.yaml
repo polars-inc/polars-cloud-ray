@@ -44,6 +44,22 @@ jobs:
           # lowest supported version
           python-version: "3.10"
 
+      - name: Check the version matches the tag
+        run: |
+          if [ "$REF_TYPE" != tag ]; then
+            echo "::error::This workflow must be run on a tag, got $REF_TYPE \"$REF_NAME\""
+            exit 1
+          fi
+
+          version=$(uv version --short)
+          if [ "$version" != "$REF_NAME" ]; then
+            echo "::error::Version in pyproject.toml ($version) differs from tag \"$REF_NAME\""
+            exit 1
+          fi
+        env:
+          REF_NAME: ${{ github.REF_NAME }}
+          REF_TYPE: ${{ github.REF_TYPE }}
+
       - name: Build the source distribution and wheel
         run: |
           uv build --out-dir dist
