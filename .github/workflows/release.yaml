@@ -25,7 +25,6 @@ jobs:
       name: release
       url: https://pypi.org/project/polars-cloud-ray
     permissions:
-    permissions:
       contents: read
       id-token: write
     timeout-minutes: 15
