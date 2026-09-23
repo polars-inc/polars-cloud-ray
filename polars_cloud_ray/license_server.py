@@ -43,6 +43,8 @@ class PolarsLicenseServer:
     ```
     """
 
+    license_server_actor_cls: typing.ClassVar[typing.Any] = PolarsLicenseServerActor
+
     def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
         self.config = config
 
@@ -59,7 +61,7 @@ class PolarsLicenseServer:
             logger.info("Reconnected to existing license server actor")
             return
 
-        self._actor = PolarsLicenseServerActor.options(  # type: ignore[attr-defined]
+        self._actor = self.license_server_actor_cls.options(  # type: ignore[attr-defined]
             name=actor_name,
             lifetime="detached",
             resources={"head": 0.001},  # pinning

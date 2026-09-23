@@ -70,6 +70,10 @@ class PolarsRayCluster:
     ```
     """
 
+    scheduler_actor_cls: typing.ClassVar[typing.Any] = PolarsSchedulerActor
+    worker_actor_cls: typing.ClassVar[typing.Any] = PolarsWorkerActor
+    scaler_actor_cls: typing.ClassVar[typing.Any] = PolarsScalerActor
+
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config = config
 
@@ -98,7 +102,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scheduler actor")
             return
 
-        self._scheduler_actor = PolarsSchedulerActor.options(  # type: ignore[attr-defined]
+        self._scheduler_actor = self.scheduler_actor_cls.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
@@ -126,7 +130,7 @@ class PolarsRayCluster:
                 actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
                 logger.info("Reconnected to existing worker %s", actor_name)
             except ValueError:
-                actor = PolarsWorkerActor.options(  # type: ignore[attr-defined]
+                actor = self.worker_actor_cls.options(  # type: ignore[attr-defined]
                     name=actor_name,
                     namespace=self.config.cluster_id,
                     lifetime="detached",
@@ -154,7 +158,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scaler actor")
             return
 
-        self._scaler_actor = PolarsScalerActor.options(  # type: ignore[attr-defined]
+        self._scaler_actor = self.scaler_actor_cls.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",

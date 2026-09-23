@@ -6,6 +6,11 @@ import toml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+def _instance_name(*parts: str) -> str:
+    """Name the host-level resources a run context creates for one instance."""
+    return "-".join(("polars-cloud-ray", *parts))
+
+
 def _resolve_absolute_path(path: str) -> pathlib.Path:
     return pathlib.Path(path).expanduser().resolve()
 
@@ -50,6 +55,9 @@ class AbsLocationConfig(BaseModel):
         description="Whether the object-store client may issue delete requests.",
     )
 
+    def config_paths(self) -> set[pathlib.Path]:
+        return set()
+
     def config(self) -> dict:
         section = self.model_dump(
             exclude={"storage_type", "options"}, exclude_none=True
@@ -87,6 +95,9 @@ class GcsLocationConfig(BaseModel):
         default=None,
         description="Whether the object-store client may issue delete requests.",
     )
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return set()
 
     def config(self) -> dict:
         section = self.model_dump(
@@ -130,6 +141,9 @@ class S3LocationConfig(BaseModel):
         description="Whether the object-store client may issue delete requests.",
     )
 
+    def config_paths(self) -> set[pathlib.Path]:
+        return set()
+
     def config(self) -> dict:
         section = self.model_dump(
             exclude={"storage_type", "options"}, exclude_none=True
@@ -142,6 +156,9 @@ class LocalStorageConfig(BaseModel):
     storage_type: typing.Literal["local"] = "local"
 
     path: str = Field(description="Absolute path on the local filesystem.")
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return {_resolve_absolute_path(self.path)}
 
     def config(self) -> dict:
         return {self.storage_type: self.model_dump(exclude={"storage_type"})}
@@ -157,6 +174,9 @@ class SharedFilesystemStorageConfig(BaseModel):
             "driver mount). Must be reachable at the same path on every node."
         ),
     )
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return {_resolve_absolute_path(self.path)}
 
     def config(self) -> dict:
         return {self.storage_type: self.model_dump(exclude={"storage_type"})}
@@ -248,6 +268,9 @@ class PolarsEnterpriseLicenseConfig(BaseModel):
         ),
     )
 
+    def config_paths(self) -> set[pathlib.Path]:
+        return {_resolve_absolute_path(self.license_path).parent}
+
     def config(self) -> dict:
         return {self.license_type: self.model_dump(exclude={"license_type"})}
 
@@ -259,6 +282,9 @@ class PolarsLicenseServerConfig(BaseModel):
     license_type: typing.Literal["license_server"] = "license_server"
 
     uri: str = Field(description="License server URI.")
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return set()
 
     def config(self) -> dict:
         return {self.license_type: self.model_dump(exclude={"license_type"})}
@@ -279,6 +305,9 @@ class PolarsServiceAccountLicenseConfig(BaseModel):
             "Directory containing TLS certificates for control-plane communication."
         ),
     )
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return {_resolve_absolute_path(self.cert_dir)}
 
     def config(self) -> dict:
         return {
@@ -307,6 +336,12 @@ class PolarsTlsConnectionConfig(BaseModel):
     private_key_file: str = Field(
         description="Absolute path to the PEM private key file.",
     )
+
+    def config_paths(self) -> set[pathlib.Path]:
+        return {
+            _resolve_absolute_path(self.certificate_key_file).parent,
+            _resolve_absolute_path(self.private_key_file).parent,
+        }
 
     def config(self) -> dict:
         return {"tls": self.model_dump()}
@@ -367,6 +402,18 @@ class PolarsObservatoryConfig(BaseModel):
             "API/dashboard service. Disabled if unset."
         ),
     )
+
+    def config_paths(self) -> set[pathlib.Path]:
+        if not self.enabled:
+            return set()
+
+        paths = {_resolve_absolute_path(self.database_path).parent}
+        if self.database_export:
+            paths.add(_resolve_absolute_path(self.database_export).parent)
+        if self.rest_connection is not None:
+            paths |= self.rest_connection.config_paths()
+
+        return paths
 
     def config(self) -> dict:
         d: dict = {"enabled": self.enabled}
@@ -574,6 +621,16 @@ class PolarsSchedulerConfig(BaseModel):
             },
         }
 
+    def config_paths(self) -> set[pathlib.Path]:
+        paths = self.observatory.config_paths()
+
+        if self.anonymous_result is not None:
+            paths |= self.anonymous_result.config_paths()
+        if self.connection is not None:
+            paths |= self.connection.config_paths()
+
+        return paths
+
     def config_license(self, license_: PolarsLicenseConfig) -> dict:
         return license_.config()
 
@@ -690,6 +747,16 @@ class PolarsWorkerConfig(BaseModel):
         ),
     )
 
+    def config_paths(self) -> set[pathlib.Path]:
+        paths = {_resolve_absolute_path(self.temporary_data_dir)}
+
+        if self.shuffle_data is not None:
+            paths |= self.shuffle_data.config_paths()
+        if self.checkpoint_location is not None:
+            paths |= self.checkpoint_location.config_paths()
+
+        return paths
+
     def config_license(self, license_: PolarsLicenseConfig) -> dict | None:
         if isinstance(license_, PolarsServiceAccountLicenseConfig):
             return None
@@ -721,6 +788,9 @@ class PolarsWorkerConfig(BaseModel):
 
 class PolarsRayClusterConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
+
+    # whether to resolve the absolute binary path
+    _resolve_binary_path: typing.ClassVar[bool] = True
 
     # cluster configuration
     binary_path: str = Field(
@@ -815,10 +885,10 @@ class PolarsRayClusterConfig(BaseModel):
 
     @model_validator(mode="after")
     def _absolute_binary_path(self) -> "PolarsRayClusterConfig":
-        """Resolve `binary_path` to an absolute path."""
-        object.__setattr__(
-            self, "binary_path", str(_resolve_absolute_path(self.binary_path))
-        )
+        if self._resolve_binary_path:
+            object.__setattr__(
+                self, "binary_path", str(_resolve_absolute_path(self.binary_path))
+            )
         return self
 
     def _worker_port_offset(self, worker_id: int) -> int:
@@ -871,6 +941,10 @@ class PolarsRayClusterConfig(BaseModel):
             msg = f"Port(s) already in use, aborting: {', '.join(taken)}"
             raise RuntimeError(msg)
 
+    def config_paths_scheduler(self) -> set[pathlib.Path]:
+        """Return every filesystem path the scheduler reads or writes."""
+        return self.scheduler.config_paths() | self.license.config_paths()
+
     def config_scheduler(self, scheduler_host: str) -> str:
         """Render the TOML configuration of the scheduler node."""
         doc: dict = {
@@ -899,6 +973,10 @@ class PolarsRayClusterConfig(BaseModel):
             doc["lineage"] = lineage
 
         return toml.dumps(doc)
+
+    def config_paths_worker(self) -> set[pathlib.Path]:
+        """Return every filesystem path the worker reads or writes."""
+        return self.worker.config_paths() | self.license.config_paths()
 
     def config_worker(
         self,
@@ -933,6 +1011,9 @@ class PolarsRayClusterConfig(BaseModel):
 
         return toml.dumps(doc)
 
+    def instance_name(self, instance_id: str) -> str:
+        return _instance_name(self.cluster_id, instance_id)
+
 
 class PolarsLicenseServerRuntimeConfig(BaseModel):
     """Runtime configuration for a `pc-license-server` process.
@@ -943,6 +1024,11 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True)
+
+    # a run context launching the binary somewhere other than this filesystem — a
+    # container, say — sets this to False, `binary_path` then naming an executable
+    # inside that environment
+    _resolve_binary_path: typing.ClassVar[bool] = True
 
     # runtime configuration
     binary_path: str = Field(
@@ -998,7 +1084,24 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
         ),
     )
 
-    def env(self) -> dict[str, str]:
+    @model_validator(mode="after")
+    def _absolute_binary_path(self) -> "PolarsLicenseServerRuntimeConfig":
+        """Resolve `binary_path` to an absolute path, unless a subclass opts out."""
+        if self._resolve_binary_path:
+            object.__setattr__(
+                self, "binary_path", str(_resolve_absolute_path(self.binary_path))
+            )
+        return self
+
+    def config_paths(self) -> set[pathlib.Path]:
+        """Return every filesystem path the license server reads or writes."""
+        return {
+            _resolve_absolute_path(self.report_dir),
+            _resolve_absolute_path(self.license_path).parent,
+            _resolve_absolute_path(self.tls_bundle_path).parent,
+        }
+
+    def config(self) -> dict[str, str]:
         env = {
             "PC_LICENSE_SERVER_BIND": f"0.0.0.0:{self.grpc_port}",
             "PC_LICENSE_SERVER_HEALTH_BIND": f"0.0.0.0:{self.http_port}",
@@ -1009,3 +1112,6 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
         if self.db_disable_file_locking:
             env["PC_LICENSE_SERVER_DB_DISABLE_FILE_LOCKING"] = "true"
         return env
+
+    def instance_name(self, instance_id: str) -> str:
+        return _instance_name(instance_id)

@@ -102,18 +102,41 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
     signal.signal(signal.SIGTERM, _handler)
 
 
-def _is_ready(
-    process: subprocess.Popen | None,
-    host: str,
-    port: int,
-) -> bool:
-    if process is None or process.poll() is not None:
-        return False
+def _is_listening(host: str, port: int) -> bool:
+    """Return whether something is accepting connections on `host:port`."""
     try:
         with socket.create_connection((host, port), timeout=0.5):
             return True
     except OSError:
         return False
+
+
+class SubprocessRunMixin:
+    """Run the binary as a subprocess of the actor.
+
+    The four methods below are the only spots an actor touches what it launched, so an
+    alternative managing context (a container, or a `systemd-run` scope for instance)
+    needs to overwrite them.
+
+    These methods are inherited, and the whole process lifecycle around them remains
+    untouched. `_handle` is whatever that context needs to identify what it started.
+    """
+
+    _handle: typing.Any | None = None
+
+    def _start(self, cmd: list[str], env: dict[str, str], name: str) -> None:
+        self._handle = subprocess.Popen(cmd, env=env)
+        logger.info("Process ID of %s: %d", name, self._handle.pid)
+
+    def _stop(self, name: str) -> None:
+        _stop(self._handle, name)
+        self._handle = None
+
+    def _is_alive(self) -> bool:
+        return self._handle is not None and self._handle.poll() is None
+
+    def _pid(self) -> int | None:
+        return self._handle.pid if self._handle is not None else None
 
 
 def list_actor_names(cluster_id: str, prefix: str) -> set[str]:

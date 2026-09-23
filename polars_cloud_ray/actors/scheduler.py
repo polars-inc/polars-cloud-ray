@@ -1,16 +1,16 @@
 import logging
 import os
 import pathlib
-import subprocess
 import tempfile
+import typing
 
 import ray
 
 from polars_cloud_ray.actors.utils import (
+    SubprocessRunMixin,
     _handle_sigterm,
-    _is_ready,
+    _is_listening,
     _resolve_host,
-    _stop,
     _stop_orphans,
     list_actor_names,
     resolve_actor_handles,
@@ -33,9 +33,10 @@ def resolve_scheduler_name() -> str:
     return SCHEDULER_NAME_PREFIX
 
 
-@ray.remote
-class PolarsSchedulerActor:
-    """The central service, distributing tasks and piloting autoscaling."""
+class _PolarsSchedulerActor(SubprocessRunMixin):
+    """Binary lifecycle management; inherit this to run the binary differently."""
+
+    worker_actor_cls: typing.ClassVar[typing.Any] = None
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config: PolarsRayClusterConfig = config
@@ -44,7 +45,7 @@ class PolarsSchedulerActor:
         self.num_workers: int = config.num_workers  # initial value
 
         self._config_path: str | None = None
-        self._process: subprocess.Popen | None = None
+        self._handle = None
 
         self.start()
         _handle_sigterm(self.stop)
@@ -55,7 +56,7 @@ class PolarsSchedulerActor:
     def _add_worker(self, worker_id: int) -> None:
         actor_name = resolve_worker_name(worker_id)
 
-        PolarsWorkerActor.options(  # type: ignore[attr-defined]
+        self.worker_actor_cls.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
@@ -75,7 +76,7 @@ class PolarsSchedulerActor:
 
     def start(self) -> None:
         """Spawn the scheduler process, if not already running."""
-        if self._process is not None:
+        if self._handle is not None:
             return
 
         _stop_orphans(
@@ -108,13 +109,15 @@ class PolarsSchedulerActor:
             "RUST_BACKTRACE": self.config.rust_backtrace,
         }
 
-        self._process = subprocess.Popen(cmd, env=env)
-        logger.info("Scheduler process ID: %d", self._process.pid)
+        self._start(
+            cmd,
+            env,
+            self.config.instance_name(resolve_scheduler_name()),
+        )
 
     def stop(self) -> None:
         """Terminate the scheduler process and clean up."""
-        _stop(self._process, resolve_scheduler_name())
-        self._process = None
+        self._stop(self.config.instance_name(resolve_scheduler_name()))
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -122,8 +125,7 @@ class PolarsSchedulerActor:
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
-        return _is_ready(
-            self._process,
+        return self._is_alive() and _is_listening(
             self.scheduler_host,
             self.config.scheduler.worker_registration_port,
         )
@@ -146,7 +148,7 @@ class PolarsSchedulerActor:
 
     def get_scheduler_pid(self) -> int | None:
         """Return the OS process ID of the scheduler binary subprocess."""
-        return self._process.pid if self._process is not None else None
+        return self._pid()
 
     def get_scaling_status(self) -> dict[str, int | set[str] | None]:
         """Return the current/desired worker counts and configured bounds."""
@@ -239,3 +241,10 @@ class PolarsSchedulerActor:
             self._remove_workers(to_remove)
 
         self.num_workers = num_workers  # new value
+
+
+@ray.remote
+class PolarsSchedulerActor(_PolarsSchedulerActor):
+    """The central service, distributing tasks and piloting autoscaling."""
+
+    worker_actor_cls = PolarsWorkerActor

@@ -2,16 +2,15 @@ import logging
 import os
 import pathlib
 import re
-import subprocess
 import tempfile
 
 import ray
 
 from polars_cloud_ray.actors.utils import (
+    SubprocessRunMixin,
     _handle_sigterm,
-    _is_ready,
+    _is_listening,
     _resolve_host,
-    _stop,
     _stop_orphans,
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
@@ -29,9 +28,8 @@ def _resolve_worker_name_regex() -> re.Pattern:
     return re.compile(rf"^{WORKER_NAME_PREFIX}-(\d+)$")
 
 
-@ray.remote
-class PolarsWorkerActor:
-    """The computing service, accepting tasks from the scheduler."""
+class _PolarsWorkerActor(SubprocessRunMixin):
+    """Binary lifecycle management; inherit this to run the binary differently."""
 
     def __init__(
         self,
@@ -43,11 +41,11 @@ class PolarsWorkerActor:
 
         self.worker_id = worker_id
         self.worker_host: str = _resolve_host()
-        self.worker_name: str = ""
+        self.worker_name: str = resolve_worker_name(worker_id)
         self.scheduler_host = scheduler_host
 
         self._config_path: str | None = None
-        self._process: subprocess.Popen | None = None
+        self._handle = None
 
         self.start()
         _handle_sigterm(self.stop)
@@ -57,10 +55,9 @@ class PolarsWorkerActor:
 
     def start(self) -> None:
         """Spawn the worker process, if not already running."""
-        if self._process is not None:
+        if self._handle is not None:
             return
 
-        self.worker_name = resolve_worker_name(self.worker_id)
         offset = self.config._worker_port_offset(self.worker_id)
 
         _stop_orphans(
@@ -94,13 +91,15 @@ class PolarsWorkerActor:
             "RUST_BACKTRACE": self.config.rust_backtrace,
         }
 
-        self._process = subprocess.Popen(cmd, env=env)
-        logger.info("PID of %s: %d", self.worker_name, self._process.pid)
+        self._start(
+            cmd,
+            env,
+            self.config.instance_name(resolve_worker_name(self.worker_id)),
+        )
 
     def stop(self) -> None:
         """Terminate the worker process and clean up."""
-        _stop(self._process, self.worker_name)
-        self._process = None
+        self._stop(self.config.instance_name(resolve_worker_name(self.worker_id)))
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -111,8 +110,13 @@ class PolarsWorkerActor:
         port = self.config.worker.task_port + self.config._worker_port_offset(
             self.worker_id
         )
-        return _is_ready(self._process, self.worker_host, port)
+        return self._is_alive() and _is_listening(self.worker_host, port)
 
     def get_worker_pid(self) -> int | None:
         """Return the OS process ID of the worker binary subprocess."""
-        return self._process.pid if self._process is not None else None
+        return self._pid()
+
+
+@ray.remote
+class PolarsWorkerActor(_PolarsWorkerActor):
+    """The computing service, accepting tasks from the scheduler."""
