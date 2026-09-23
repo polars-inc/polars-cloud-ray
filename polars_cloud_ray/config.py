@@ -473,6 +473,14 @@ class PolarsScalingConfig(BaseModel):
         default=4001,
         description=("Port the autoscaler HTTP server listens for requests on."),
     )
+    bind_host: str = Field(
+        default="127.0.0.1",
+        description=(
+            "Address the autoscaler HTTP server binds. Loopback is right when the "
+            "binary shares this network namespace; a run context isolating the network "
+            "needs something its containers can reach."
+        ),
+    )
 
     def config(self) -> dict | None:
         # next two lines for older binaries without support for the [scaling] section

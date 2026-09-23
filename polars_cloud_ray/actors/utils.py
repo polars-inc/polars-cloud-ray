@@ -17,10 +17,6 @@ logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-def _resolve_host() -> str:
-    return socket.gethostbyname(socket.gethostname())
-
-
 def _stop(process: subprocess.Popen | None, label: str) -> None:
     if process is not None:
         logger.info("Stopping %s (%d)", label, process.pid)
@@ -32,7 +28,7 @@ def _stop(process: subprocess.Popen | None, label: str) -> None:
             process.wait()
 
 
-def _stop_orphans(
+def _stop_orphan_processes(
     binary_path: str,
     cluster_id: str,
     instance_id: str,
@@ -114,15 +110,18 @@ def _is_listening(host: str, port: int) -> bool:
 class SubprocessRunMixin:
     """Run the binary as a subprocess of the actor.
 
-    The four methods below are the only spots an actor touches what it launched, so an
-    alternative managing context (a container, or a `systemd-run` scope for instance)
-    needs to overwrite them.
+    The seven methods below are the only spots an actor touches what it launched and
+    how it can be accessed, so an alternative managing context (a container, or a
+    `systemd-run` scope for instance) needs to overwrite them.
 
     These methods are inherited, and the whole process lifecycle around them remains
     untouched. `_handle` is whatever that context needs to identify what it started.
     """
 
     _handle: typing.Any | None = None
+
+    def _host(self, instance_id: str) -> str:  # noqa: ARG002
+        return socket.gethostbyname(socket.gethostname())
 
     def _start(self, cmd: list[str], env: dict[str, str], name: str) -> None:
         self._handle = subprocess.Popen(cmd, env=env)
@@ -132,8 +131,19 @@ class SubprocessRunMixin:
         _stop(self._handle, name)
         self._handle = None
 
+    def _stop_orphans(self, instance_id: str, ports: list[int]) -> None:
+        _stop_orphan_processes(
+            self.config.binary_path,  # type: ignore[attr-defined]
+            self.config.cluster_id,  # type: ignore[attr-defined]
+            instance_id,
+            ports,
+        )
+
     def _is_alive(self) -> bool:
         return self._handle is not None and self._handle.poll() is None
+
+    def _is_listening(self, instance_id: str, port: int) -> bool:
+        return _is_listening(self._host(instance_id), port)
 
     def _pid(self) -> int | None:
         return self._handle.pid if self._handle is not None else None

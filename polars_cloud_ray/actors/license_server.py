@@ -8,7 +8,6 @@ import ray
 from polars_cloud_ray.actors.utils import (
     SubprocessRunMixin,
     _handle_sigterm,
-    _resolve_host,
 )
 from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
 
@@ -27,7 +26,7 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
     def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
         self.config: PolarsLicenseServerRuntimeConfig = config
 
-        self.host: str = _resolve_host()
+        self.host: str = self._host(resolve_license_server_name())
 
         self._handle = None
 

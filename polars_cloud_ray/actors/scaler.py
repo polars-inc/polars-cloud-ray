@@ -169,7 +169,10 @@ class PolarsScalerActor:
         if self._http_server is None:
             # fails with OSError if port is already used
             self._http_server = _ScalingHTTPServer(
-                ("127.0.0.1", self.config.scheduler.scaling.port),
+                (
+                    self.config.scheduler.scaling.bind_host,
+                    self.config.scheduler.scaling.port,
+                ),
                 self.config.cluster_id,
                 self.config.actor_response_timeout,
             )
@@ -180,7 +183,8 @@ class PolarsScalerActor:
             self._http_server_thread.start()
 
             logger.info(
-                "Scaler HTTP server listening on 127.0.0.1:%d",
+                "Scaler HTTP server listening on %s:%d",
+                self.config.scheduler.scaling.bind_host,
                 self._http_server.server_port,
             )
 

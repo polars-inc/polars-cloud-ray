@@ -9,9 +9,6 @@ import ray
 from polars_cloud_ray.actors.utils import (
     SubprocessRunMixin,
     _handle_sigterm,
-    _is_listening,
-    _resolve_host,
-    _stop_orphans,
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
@@ -40,7 +37,7 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         self.config: PolarsRayClusterConfig = config
 
         self.worker_id = worker_id
-        self.worker_host: str = _resolve_host()
+        self.worker_host: str = self._host(resolve_worker_name(worker_id))
         self.worker_name: str = resolve_worker_name(worker_id)
         self.scheduler_host = scheduler_host
 
@@ -60,9 +57,7 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
         offset = self.config._worker_port_offset(self.worker_id)
 
-        _stop_orphans(
-            self.config.binary_path,
-            self.config.cluster_id,
+        self._stop_orphans(
             self.worker_name,
             [
                 self.config.worker.task_port + offset,
@@ -110,7 +105,10 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         port = self.config.worker.task_port + self.config._worker_port_offset(
             self.worker_id
         )
-        return self._is_alive() and _is_listening(self.worker_host, port)
+        return self._is_alive() and self._is_listening(
+            resolve_worker_name(self.worker_id),
+            port,
+        )
 
     def get_worker_pid(self) -> int | None:
         """Return the OS process ID of the worker binary subprocess."""

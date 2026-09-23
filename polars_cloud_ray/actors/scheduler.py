@@ -9,9 +9,6 @@ import ray
 from polars_cloud_ray.actors.utils import (
     SubprocessRunMixin,
     _handle_sigterm,
-    _is_listening,
-    _resolve_host,
-    _stop_orphans,
     list_actor_names,
     resolve_actor_handles,
     terminate_actors,
@@ -41,7 +38,7 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config: PolarsRayClusterConfig = config
 
-        self.scheduler_host: str = _resolve_host()
+        self.scheduler_host: str = self._host(resolve_scheduler_name())
         self.num_workers: int = config.num_workers  # initial value
 
         self._config_path: str | None = None
@@ -79,9 +76,7 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
         if self._handle is not None:
             return
 
-        _stop_orphans(
-            self.config.binary_path,
-            self.config.cluster_id,
+        self._stop_orphans(
             resolve_scheduler_name(),
             [
                 self.config.scheduler.worker_registration_port,
@@ -125,8 +120,8 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
-        return self._is_alive() and _is_listening(
-            self.scheduler_host,
+        return self._is_alive() and self._is_listening(
+            resolve_scheduler_name(),
             self.config.scheduler.worker_registration_port,
         )
 
