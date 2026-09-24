@@ -17,75 +17,7 @@ logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-def _stop(process: subprocess.Popen | None, label: str) -> None:
-    if process is not None:
-        logger.info("Stopping %s (%d)", label, process.pid)
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
-
-
-def _stop_orphan_processes(
-    binary_path: str,
-    cluster_id: str,
-    instance_id: str,
-    ports: list[int],
-) -> None:
-    """Terminate a leftover process from a previous crashed instance."""
-    for process in psutil.process_iter():
-        try:
-            port = next(
-                (
-                    conn.laddr.port
-                    for conn in process.net_connections(kind="tcp")
-                    if conn.status == psutil.CONN_LISTEN and conn.laddr.port in ports
-                ),
-                None,
-            )
-            if port is None:
-                continue
-            cmdline = process.cmdline()
-        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-            continue
-
-        msg = f"Port {port} is already in use by process ID {process.pid} "
-
-        if cmdline[0] != binary_path:
-            msg += "which does not look like one of our own processes."
-            raise RuntimeError(msg)
-
-        try:
-            stale_config = toml.loads(pathlib.Path(cmdline[3]).read_text())
-        except (IndexError, OSError) as exc:
-            msg += "but we cannot confirm if it is a stale instance."
-            raise RuntimeError(msg) from exc
-
-        if stale_config.get("cluster_id") != cluster_id:
-            msg += f"by a different cluster ('{stale_config.get('cluster_id')}')."
-            raise RuntimeError(msg)
-
-        if stale_config.get("instance_id") != instance_id:
-            msg += f"by a different instance ('{stale_config.get('instance_id')}')."
-            raise RuntimeError(msg)
-
-        logger.warning(
-            "Cleaning orphan '%s' process left over from a previous crash",
-            instance_id,
-        )
-
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except psutil.TimeoutExpired:
-            process.kill()
-            process.wait()
-
-
 def _handle_sigterm(func: typing.Callable[[], None]) -> None:
-    """Call function on `SIGTERM` call; then hand off to Ray's handler."""
     previous_handler = signal.getsignal(signal.SIGTERM)
 
     def _handler(signum: int, frame: object) -> None:
@@ -96,15 +28,6 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
                 previous_handler(signum, frame)  # type: ignore[arg-type]
 
     signal.signal(signal.SIGTERM, _handler)
-
-
-def _is_listening(host: str, port: int) -> bool:
-    """Return whether something is accepting connections on `host:port`."""
-    try:
-        with socket.create_connection((host, port), timeout=0.5):
-            return True
-    except OSError:
-        return False
 
 
 class SubprocessRunMixin:
@@ -128,22 +51,74 @@ class SubprocessRunMixin:
         logger.info("Process ID of %s: %d", name, self._handle.pid)
 
     def _stop(self, name: str) -> None:
-        _stop(self._handle, name)
+        if self._handle is not None:
+            logger.info("Stopping %s (%d)", name, self._handle.pid)
+            self._handle.terminate()
+            try:
+                self._handle.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._handle.kill()
+                self._handle.wait()
         self._handle = None
 
     def _stop_orphans(self, instance_id: str, ports: list[int]) -> None:
-        _stop_orphan_processes(
-            self.config.binary_path,  # type: ignore[attr-defined]
-            self.config.cluster_id,  # type: ignore[attr-defined]
-            instance_id,
-            ports,
-        )
+        for process in psutil.process_iter():
+            try:
+                port = next(
+                    (
+                        conn.laddr.port
+                        for conn in process.net_connections(kind="tcp")
+                        if conn.status == psutil.CONN_LISTEN and conn.laddr.port in ports
+                    ),
+                    None,
+                )
+                if port is None:
+                    continue
+                cmdline = process.cmdline()
+            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+                continue
+
+            msg = f"Port {port} is already in use by process ID {process.pid} "
+
+            if cmdline[0] != self.config.binary_path:  # type: ignore[arg-type]
+                msg += "which does not look like one of our own processes."
+                raise RuntimeError(msg)
+
+            try:
+                stale_config = toml.loads(pathlib.Path(cmdline[3]).read_text())
+            except (IndexError, OSError) as exc:
+                msg += "but we cannot confirm if it is a stale instance."
+                raise RuntimeError(msg) from exc
+
+            if stale_config.get("cluster_id") != self.config.cluster_id:  # type: ignore[arg-type]
+                msg += f"by a different cluster ('{stale_config.get('cluster_id')}')."
+                raise RuntimeError(msg)
+
+            if stale_config.get("instance_id") != instance_id:
+                msg += f"by a different instance ('{stale_config.get('instance_id')}')."
+                raise RuntimeError(msg)
+
+            logger.warning(
+                "Cleaning orphan '%s' process left over from a previous crash",
+                instance_id,
+            )
+
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except psutil.TimeoutExpired:
+                process.kill()
+                process.wait()
 
     def _is_alive(self) -> bool:
         return self._handle is not None and self._handle.poll() is None
 
     def _is_listening(self, instance_id: str, port: int) -> bool:
-        return _is_listening(self._host(instance_id), port)
+        try:
+            with socket.create_connection((self._host(instance_id), port), timeout=0.5):
+                return True
+        except OSError:
+            return False
 
     def _pid(self) -> int | None:
         return self._handle.pid if self._handle is not None else None
