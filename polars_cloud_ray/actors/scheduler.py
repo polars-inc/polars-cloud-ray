@@ -168,16 +168,39 @@ class PolarsSchedulerActor:
         Parameters
         ----------
         num_workers
-            The number of worker to upscale or downscale to. If neither `delete` nor
-            `keep` is given, random workers are removed.
+            The number of worker to upscale or downscale to, clamped to `min_workers`
+            and `max_workers`. If neither `delete` nor `keep` is given, random workers
+            are removed.
         delete
-            Set of worker instances to terminate. Applied before `keep`.
+            Set of worker instances to terminate. Applied before `keep`. Names that
+            are not worker actors are ignored.
         keep
             Set of worker instances to keep running, while terminating all the others
-            not already removed via `delete`.
+            not already removed via `delete`. Names that are not worker actors are
+            ignored.
 
         """
+        min_workers = self.config.min_workers
+        max_workers = self.config.max_workers
+        clamped = max(min_workers, num_workers)
+
+        if max_workers is not None:
+            clamped = min(max_workers, clamped)
+
+        if clamped != num_workers:
+            logger.warning(
+                "Clamped requested %d workers to %d, within [%d, %s]",
+                num_workers,
+                clamped,
+                min_workers,
+                max_workers,
+            )
+            num_workers = clamped
+
         worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
+
+        delete = (delete or set()) & worker_names or None
+        keep = (keep or set()) & worker_names or None
 
         if len(worker_names) < num_workers:
             # offset the id used by each worker to avoid collisions with running worker
