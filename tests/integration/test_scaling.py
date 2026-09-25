@@ -1,6 +1,5 @@
 import json
 import time
-import urllib.error
 import urllib.request
 
 import pytest
