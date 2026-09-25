@@ -199,8 +199,8 @@ class PolarsSchedulerActor:
 
         worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
 
-        delete = (delete or set()) & worker_names or None
-        keep = (keep or set()) & worker_names or None
+        _delete = (delete or set()) & worker_names or None
+        _keep = (keep or set()) & worker_names or None
 
         if len(worker_names) < num_workers:
             # offset the id used by each worker to avoid collisions with running worker
@@ -225,16 +225,16 @@ class PolarsSchedulerActor:
         elif len(worker_names) > num_workers:
             if num_workers == 0:
                 to_remove = set(worker_names)
-            elif delete is None and keep is None:
+            elif _delete is None and _keep is None:
                 to_remove = set(list(worker_names)[: len(worker_names) - num_workers])
             else:
                 to_remove = set()
                 remaining = worker_names
-                if delete is not None:
-                    to_remove |= delete
-                    remaining = remaining - delete
-                if keep is not None:
-                    to_remove |= remaining - keep
+                if _delete is not None:
+                    to_remove |= _delete
+                    remaining = remaining - _delete
+                if _keep is not None:
+                    to_remove |= remaining - _keep
 
             self._remove_workers(to_remove)
 
