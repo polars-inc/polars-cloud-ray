@@ -2,9 +2,9 @@ import http.server
 import json
 import logging
 import threading
-import urllib.parse
 
 import ray
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 from ray.actor import ActorHandle
 
 from polars_cloud_ray.actors.scheduler import resolve_scheduler_name
@@ -20,35 +20,18 @@ def resolve_scaler_name() -> str:
     return SCALER_NAME_PREFIX
 
 
-def _validate_request_body(body: object) -> str | None:
-    if not isinstance(body, dict):
-        return "Request body must be a JSON object"
+class ScaleToRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
-    amount = body.get("amount")
-    if isinstance(amount, bool) or not isinstance(amount, int) or amount < 0:
-        return "'amount' must be a non-negative integer"
-
-    for key in ("workers_to_keep", "workers_to_delete"):
-        names = body.get(key)
-        if names is not None and (
-            not isinstance(names, list)
-            or not all(isinstance(name, str) for name in names)
-        ):
-            return f"'{key}' must be a list of worker names"
-
-    return None
+    amount: int = Field(ge=0, strict=True)
+    workers_to_keep: set[StrictStr] | None = None
+    workers_to_delete: set[StrictStr] | None = None
 
 
 class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
     """Bridge HTTP scaling calls from the binary to the scheduler actor."""
 
     server: "_ScalingHTTPServer"
-
-    def _is_expected_host(self) -> bool:
-        if self.headers.get("Host", "").lower() == self.server.expected_host:
-            return True
-        self._respond(403, {"detail": "unexpected Host header"})
-        return False
 
     # resolve lazily on each call rather than once at construction: the scaler
     # should start before the scheduler actor for the latter to bind to it
@@ -73,9 +56,6 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def do_GET(self) -> None:
-        if not self._is_expected_host():
-            return
-
         if self.path != "/scale_config":
             self._respond(404, {"detail": "not found"})
             return
@@ -101,9 +81,6 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
-        if not self._is_expected_host():
-            return
-
         if self.path != "/scale_to":
             self._respond(404, {"detail": "not found"})
             return
@@ -115,32 +92,34 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
 
         try:
-            body = json.loads(self.rfile.read(length)) if length else {}
-        except json.JSONDecodeError:
-            logger.exception("scale_to request failed")
-            self._respond(400, {"detail": "malformed JSON request body"})
+            request = ScaleToRequest.model_validate_json(self.rfile.read(length))
+        except ValidationError as exc:
+            logger.exception("scale_to request rejected")
+            self._respond(
+                400,
+                {
+                    "detail": exc.errors(
+                        include_url=False,
+                        include_input=False,
+                        include_context=False,
+                    )
+                },
+            )
             return
 
-        if (detail := _validate_request_body(body)) is not None:
-            logger.error("scale_to request rejected: %s", detail)
-            self._respond(400, {"detail": detail})
-            return
-
-        keep = set(body.get("workers_to_keep") or []) or None
-        delete = set(body.get("workers_to_delete") or []) or None
         logger.info(
             "scale_to request: amount=%d, keep=%s, delete=%s",
-            body["amount"],
-            keep,
-            delete,
+            request.amount,
+            request.workers_to_keep,
+            request.workers_to_delete,
         )
 
         try:
             ray.get(
                 self._scheduler_actor().rescale_worker_pool_to.remote(
-                    body["amount"],
-                    delete=delete,
-                    keep=keep,
+                    request.amount,
+                    keep=request.workers_to_keep,
+                    delete=request.workers_to_delete,
                 ),
                 timeout=self.server.actor_response_timeout,
             )
@@ -163,11 +142,9 @@ class _ScalingHTTPServer(http.server.ThreadingHTTPServer):
         address: tuple[str, int],
         cluster_id: str,
         actor_response_timeout: int,
-        expected_host: str,
     ) -> None:
         self.cluster_id = cluster_id
         self.actor_response_timeout = actor_response_timeout
-        self.expected_host = expected_host.lower()
         super().__init__(address, _ScalingRequestHandler)
 
 
@@ -190,17 +167,11 @@ class PolarsScalerActor:
     def start(self) -> None:
         """Start the HTTP server, if not already running."""
         if self._http_server is None:
-            if (scaling := self.config.scheduler.scaling.config()) is None:
-                msg = "Cannot start the scaler: scaling is disabled."
-                raise RuntimeError(msg)
-
             # fails with OSError if port is already used
             self._http_server = _ScalingHTTPServer(
                 ("127.0.0.1", self.config.scheduler.scaling.port),
                 self.config.cluster_id,
                 self.config.actor_response_timeout,
-                # the address the binary is told to reach us at, and so sends as Host
-                urllib.parse.urlsplit(scaling["rest"]["uri"]).netloc,
             )
             self._http_server_thread = threading.Thread(
                 target=self._http_server.serve_forever,

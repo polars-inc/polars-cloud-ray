@@ -173,8 +173,7 @@ and only enforced on rescaling, where a `POST /scale_to` count outside them is
 clamped.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
-The HTTP server is unauthenticated and binds `127.0.0.1` only. It answers requests
-whose `Host` header matches the address handed to the binary, accepts only
+The HTTP server is unauthenticated and binds `127.0.0.1`. It accepts only
 `application/json` bodies, and ignores worker names that are not worker actors.
 
 > [!NOTE]
