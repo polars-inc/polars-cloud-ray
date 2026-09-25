@@ -167,11 +167,14 @@ Ray worker actors in response.
 Enable it via `PolarsScalingConfig` on the scheduler, and optionally set
 `min_workers` and/or `max_workers` on the cluster config to bound how far it may
 scale.
-Note the cluster always _starts_ `num_workers` workers: the bounds are advisory,
-reported back to the binary on `GET /scale_config` and seeded into
-`max_workers_per_query`. The scaler itself honours whatever count the binary asks
-for on `POST /scale_to` without clamping it.
+Note the cluster always _starts_ `num_workers` workers: the bounds are reported
+back to the binary on `GET /scale_config`, seeded into `max_workers_per_query`,
+and only enforced on rescaling, where a `POST /scale_to` count outside them is
+clamped.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
+
+The HTTP server is unauthenticated and binds `127.0.0.1`. It accepts only
+`application/json` bodies, and ignores worker names that are not worker actors.
 
 > [!NOTE]
 > Avoid leaving `default_workers_per_query` at `1` if you want queries to ever

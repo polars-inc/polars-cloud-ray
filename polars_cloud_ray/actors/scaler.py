@@ -4,6 +4,7 @@ import logging
 import threading
 
 import ray
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, ValidationError
 from ray.actor import ActorHandle
 
 from polars_cloud_ray.actors.scheduler import resolve_scheduler_name
@@ -17,6 +18,14 @@ logger = logging.getLogger(__name__)
 
 def resolve_scaler_name() -> str:
     return SCALER_NAME_PREFIX
+
+
+class ScaleToRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    amount: int = Field(ge=0, strict=True)
+    workers_to_keep: set[StrictStr] | None = None
+    workers_to_delete: set[StrictStr] | None = None
 
 
 class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -76,35 +85,41 @@ class _ScalingRequestHandler(http.server.BaseHTTPRequestHandler):
             self._respond(404, {"detail": "not found"})
             return
 
+        if self.headers.get_content_type() != "application/json":
+            self._respond(415, {"detail": "expected an application/json request body"})
+            return
+
         length = int(self.headers.get("Content-Length", 0))
 
         try:
-            body = json.loads(self.rfile.read(length)) if length else {}
-        except json.JSONDecodeError:
-            logger.exception("scale_to request failed")
-            self._respond(400, {"detail": "malformed JSON request body"})
+            request = ScaleToRequest.model_validate_json(self.rfile.read(length))
+        except ValidationError as exc:
+            logger.exception("scale_to request rejected")
+            self._respond(
+                400,
+                {
+                    "detail": exc.errors(
+                        include_url=False,
+                        include_input=False,
+                        include_context=False,
+                    )
+                },
+            )
             return
 
-        if "amount" not in body:
-            logger.error("scale_to request failed")
-            self._respond(500, {"detail": "missing 'amount' attribute in request body"})
-            return
-
-        keep = set(body.get("workers_to_keep") or []) or None
-        delete = set(body.get("workers_to_delete") or []) or None
         logger.info(
             "scale_to request: amount=%d, keep=%s, delete=%s",
-            body["amount"],
-            keep,
-            delete,
+            request.amount,
+            request.workers_to_keep,
+            request.workers_to_delete,
         )
 
         try:
             ray.get(
                 self._scheduler_actor().rescale_worker_pool_to.remote(
-                    body["amount"],
-                    delete=delete,
-                    keep=keep,
+                    request.amount,
+                    keep=request.workers_to_keep,
+                    delete=request.workers_to_delete,
                 ),
                 timeout=self.server.actor_response_timeout,
             )

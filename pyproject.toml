@@ -1,6 +1,6 @@
 [project]
 name = "polars-cloud-ray"
-version = "0.1.0"
+version = "0.1.1"
 description = "Polars On-Prem over Ray"
 readme = "README.md"
 license = { file = "LICENSE" }

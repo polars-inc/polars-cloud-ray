@@ -168,16 +168,39 @@ class PolarsSchedulerActor:
         Parameters
         ----------
         num_workers
-            The number of worker to upscale or downscale to. If neither `delete` nor
-            `keep` is given, random workers are removed.
+            The number of worker to upscale or downscale to, clamped to `min_workers`
+            and `max_workers`. If neither `delete` nor `keep` is given, random workers
+            are removed.
         delete
-            Set of worker instances to terminate. Applied before `keep`.
+            Set of worker instances to terminate. Applied before `keep`. Names that
+            are not worker actors are ignored.
         keep
             Set of worker instances to keep running, while terminating all the others
-            not already removed via `delete`.
+            not already removed via `delete`. Names that are not worker actors are
+            ignored.
 
         """
+        min_workers = self.config.min_workers
+        max_workers = self.config.max_workers
+        clamped = max(min_workers, num_workers)
+
+        if max_workers is not None:
+            clamped = min(max_workers, clamped)
+
+        if clamped != num_workers:
+            logger.warning(
+                "Clamped requested %d workers to %d, within [%d, %s]",
+                num_workers,
+                clamped,
+                min_workers,
+                max_workers,
+            )
+            num_workers = clamped
+
         worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
+
+        _delete = (delete or set()) & worker_names or None
+        _keep = (keep or set()) & worker_names or None
 
         if len(worker_names) < num_workers:
             # offset the id used by each worker to avoid collisions with running worker
@@ -202,16 +225,16 @@ class PolarsSchedulerActor:
         elif len(worker_names) > num_workers:
             if num_workers == 0:
                 to_remove = set(worker_names)
-            elif delete is None and keep is None:
+            elif _delete is None and _keep is None:
                 to_remove = set(list(worker_names)[: len(worker_names) - num_workers])
             else:
                 to_remove = set()
                 remaining = worker_names
-                if delete is not None:
-                    to_remove |= delete
-                    remaining = remaining - delete
-                if keep is not None:
-                    to_remove |= remaining - keep
+                if _delete is not None:
+                    to_remove |= _delete
+                    remaining = remaining - _delete
+                if _keep is not None:
+                    to_remove |= remaining - _keep
 
             self._remove_workers(to_remove)
 
