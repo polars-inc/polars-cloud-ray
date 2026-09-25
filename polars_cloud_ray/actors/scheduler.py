@@ -6,8 +6,8 @@ import typing
 
 import ray
 
+from polars_cloud_ray.actors.runtime import SubprocessRunMixin
 from polars_cloud_ray.actors.utils import (
-    SubprocessRunMixin,
     _handle_sigterm,
     list_actor_names,
     resolve_actor_handles,
@@ -21,6 +21,9 @@ from polars_cloud_ray.actors.worker import (
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
+if typing.TYPE_CHECKING:
+    from polars_cloud_ray.config import PolarsSchedulerConfig
+
 SCHEDULER_NAME_PREFIX = "scheduler"
 
 logger = logging.getLogger(__name__)
@@ -33,15 +36,19 @@ def resolve_scheduler_name() -> str:
 class _PolarsSchedulerActor(SubprocessRunMixin):
     """Binary lifecycle management; inherit this to run the binary differently."""
 
-    worker_actor_cls: typing.ClassVar[typing.Any] = None
+    worker_actor_cls: typing.ClassVar[typing.Any]
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
-        self.config: PolarsRayClusterConfig = config
+        self.config_cluster: PolarsRayClusterConfig = config
+        self.config_service: PolarsSchedulerConfig = config.scheduler
 
         self.scheduler_host: str = self._host(resolve_scheduler_name())
         self.num_workers: int = config.num_workers  # initial value
 
         self._config_path: str | None = None
+        self._config_paths: set[pathlib.Path] = (
+            self.config_cluster.config_paths_scheduler()
+        )
         self._handle = None
 
         self.start()
@@ -55,18 +62,22 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
         self.worker_actor_cls.options(  # type: ignore[attr-defined]
             name=actor_name,
-            namespace=self.config.cluster_id,
+            namespace=self.config_cluster.cluster_id,
             lifetime="detached",
-            max_restarts=self.config.worker_max_restarts,
-            num_cpus=self.config.worker.cpus_hint,
-            memory=self.config.worker.memory_hint,
-        ).remote(self.config, worker_id, self.scheduler_host)
+            max_restarts=self.config_cluster.worker_max_restarts,
+            num_cpus=self.config_cluster.worker.cpus_hint,
+            memory=self.config_cluster.worker.memory_hint,
+        ).remote(self.config_cluster, worker_id, self.scheduler_host)
 
         logger.info("Requested new worker %s", actor_name)
 
     def _remove_workers(self, worker_actor_names: set[str]) -> None:
-        actors = resolve_actor_handles(worker_actor_names, self.config.cluster_id)
-        terminate_actors(list(actors.values()), self.config.actor_response_timeout)
+        actors = resolve_actor_handles(
+            worker_actor_names, self.config_cluster.cluster_id
+        )
+        terminate_actors(
+            list(actors.values()), self.config_cluster.actor_response_timeout
+        )
 
         for actor_name in worker_actor_names:
             logger.info("Removed worker %s", actor_name)
@@ -79,12 +90,12 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
         self._stop_orphans(
             resolve_scheduler_name(),
             [
-                self.config.scheduler.worker_registration_port,
-                self.config.scheduler.client_port,
+                self.config_cluster.scheduler.worker_registration_port,
+                self.config_cluster.scheduler.client_port,
             ],
         )
 
-        toml = self.config.config_scheduler(self.scheduler_host)
+        toml = self.config_cluster.config_scheduler(self.scheduler_host)
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
             f.write(toml)
@@ -92,27 +103,32 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
         logger.info(
             "Starting scheduler (%s observatory) on %s",
-            "and" if self.config.scheduler.observatory.enabled else "without",
+            "and" if self.config_cluster.scheduler.observatory.enabled else "without",
             self.scheduler_host,
         )
 
-        cmd = [self.config.binary_path, "service", "--config-path", self._config_path]
+        cmd = [
+            self.config_cluster.binary_path,
+            "service",
+            "--config-path",
+            self._config_path,
+        ]
         env = {
             **os.environ,
-            "POLARS_EULA_ACCEPTED": "yes" if self.config.accept_eula else "no",
-            "PLC_LOG_LEVEL": self.config.log_level,
-            "RUST_BACKTRACE": self.config.rust_backtrace,
+            "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
+            "PLC_LOG_LEVEL": self.config_cluster.log_level,
+            "RUST_BACKTRACE": self.config_cluster.rust_backtrace,
         }
 
         self._start(
             cmd,
             env,
-            self.config.instance_name(resolve_scheduler_name()),
+            self.config_cluster.instance_name(resolve_scheduler_name()),
         )
 
     def stop(self) -> None:
         """Terminate the scheduler process and clean up."""
-        self._stop(self.config.instance_name(resolve_scheduler_name()))
+        self._stop(self.config_cluster.instance_name(resolve_scheduler_name()))
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -122,7 +138,7 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
         """Return whether the scheduler process is alive and accepting registration."""
         return self._is_alive() and self._is_listening(
             resolve_scheduler_name(),
-            self.config.scheduler.worker_registration_port,
+            self.config_cluster.scheduler.worker_registration_port,
         )
 
     def get_host(self) -> str:
@@ -131,13 +147,13 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def get_client_addr(self) -> str:
         """Return the URI queries should be submitted to."""
-        return f"{self.scheduler_host}:{self.config.scheduler.client_port}"
+        return f"{self.scheduler_host}:{self.config_cluster.scheduler.client_port}"
 
     def get_dashboard_addr(self) -> str | None:
         """Return the observatory dashboard URL."""
         return (
-            f"http://{self.scheduler_host}:{self.config.scheduler.observatory.rest_port}"
-            if self.config.scheduler.observatory.enabled
+            f"http://{self.scheduler_host}:{self.config_cluster.scheduler.observatory.rest_port}"
+            if self.config_cluster.scheduler.observatory.enabled
             else None
         )
 
@@ -148,10 +164,12 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
     def get_scaling_status(self) -> dict[str, int | set[str] | None]:
         """Return the current/desired worker counts and configured bounds."""
         return {
-            "available": list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX),
+            "available": list_actor_names(
+                self.config_cluster.cluster_id, WORKER_NAME_PREFIX
+            ),
             "desired": self.num_workers,
-            "min": self.config.min_workers,
-            "max": self.config.max_workers,
+            "min": self.config_cluster.min_workers,
+            "max": self.config_cluster.max_workers,
         }
 
     def rescale_worker_pool_to(
@@ -177,8 +195,8 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
             ignored.
 
         """
-        min_workers = self.config.min_workers
-        max_workers = self.config.max_workers
+        min_workers = self.config_cluster.min_workers
+        max_workers = self.config_cluster.max_workers
         clamped = max(min_workers, num_workers)
 
         if max_workers is not None:
@@ -194,7 +212,9 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
             )
             num_workers = clamped
 
-        worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
+        worker_names = list_actor_names(
+            self.config_cluster.cluster_id, WORKER_NAME_PREFIX
+        )
 
         _delete = (delete or set()) & worker_names or None
         _keep = (keep or set()) & worker_names or None

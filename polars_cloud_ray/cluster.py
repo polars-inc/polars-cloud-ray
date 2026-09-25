@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 import typing
 
@@ -20,7 +19,6 @@ from polars_cloud_ray.actors import (
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
-logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 

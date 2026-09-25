@@ -1033,9 +1033,7 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    # a run context launching the binary somewhere other than this filesystem — a
-    # container, say — sets this to False, `binary_path` then naming an executable
-    # inside that environment
+    # whether to resolve the absolute binary path
     _resolve_binary_path: typing.ClassVar[bool] = True
 
     # runtime configuration

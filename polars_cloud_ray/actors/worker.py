@@ -3,14 +3,16 @@ import os
 import pathlib
 import re
 import tempfile
+import typing
 
 import ray
 
-from polars_cloud_ray.actors.utils import (
-    SubprocessRunMixin,
-    _handle_sigterm,
-)
+from polars_cloud_ray.actors.runtime import SubprocessRunMixin
+from polars_cloud_ray.actors.utils import _handle_sigterm
 from polars_cloud_ray.config import PolarsRayClusterConfig
+
+if typing.TYPE_CHECKING:
+    from polars_cloud_ray.config import PolarsWorkerConfig
 
 WORKER_NAME_PREFIX = "worker"
 
@@ -34,7 +36,8 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         worker_id: int,
         scheduler_host: str,
     ) -> None:
-        self.config: PolarsRayClusterConfig = config
+        self.config_cluster: PolarsRayClusterConfig = config
+        self.config_service: PolarsWorkerConfig = config.worker
 
         self.worker_id = worker_id
         self.worker_host: str = self._host(resolve_worker_name(worker_id))
@@ -42,6 +45,9 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         self.scheduler_host = scheduler_host
 
         self._config_path: str | None = None
+        self._config_paths: set[pathlib.Path] = (
+            self.config_cluster.config_paths_worker()
+        )
         self._handle = None
 
         self.start()
@@ -55,17 +61,17 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         if self._handle is not None:
             return
 
-        offset = self.config._worker_port_offset(self.worker_id)
+        offset = self.config_cluster._worker_port_offset(self.worker_id)
 
         self._stop_orphans(
             self.worker_name,
             [
-                self.config.worker.task_port + offset,
-                self.config.worker.shuffle_port + offset,
+                self.config_cluster.worker.task_port + offset,
+                self.config_cluster.worker.shuffle_port + offset,
             ],
         )
 
-        toml = self.config.config_worker(
+        toml = self.config_cluster.config_worker(
             self.worker_id,
             self.worker_host,
             self.scheduler_host,
@@ -77,24 +83,31 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
         logger.info("Starting %s on %s", self.worker_name, self.worker_host)
 
-        cmd = [self.config.binary_path, "service", "--config-path", self._config_path]
+        cmd = [
+            self.config_cluster.binary_path,
+            "service",
+            "--config-path",
+            self._config_path,
+        ]
         env = {
             **os.environ,
-            "POLARS_EULA_ACCEPTED": "yes" if self.config.accept_eula else "no",
-            "POLARS_TEMP_DIR": self.config.worker.temporary_data_dir,
-            "PLC_LOG_LEVEL": self.config.log_level,
-            "RUST_BACKTRACE": self.config.rust_backtrace,
+            "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
+            "POLARS_TEMP_DIR": self.config_cluster.worker.temporary_data_dir,
+            "PLC_LOG_LEVEL": self.config_cluster.log_level,
+            "RUST_BACKTRACE": self.config_cluster.rust_backtrace,
         }
 
         self._start(
             cmd,
             env,
-            self.config.instance_name(resolve_worker_name(self.worker_id)),
+            self.config_cluster.instance_name(resolve_worker_name(self.worker_id)),
         )
 
     def stop(self) -> None:
         """Terminate the worker process and clean up."""
-        self._stop(self.config.instance_name(resolve_worker_name(self.worker_id)))
+        self._stop(
+            self.config_cluster.instance_name(resolve_worker_name(self.worker_id))
+        )
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -102,8 +115,9 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the worker process is alive and listening for tasks."""
-        port = self.config.worker.task_port + self.config._worker_port_offset(
-            self.worker_id
+        port = (
+            self.config_cluster.worker.task_port
+            + self.config_cluster._worker_port_offset(self.worker_id)
         )
         return self._is_alive() and self._is_listening(
             resolve_worker_name(self.worker_id),

@@ -1,14 +1,16 @@
 import logging
 import os
+import typing
 import urllib.error
 import urllib.request
 
+if typing.TYPE_CHECKING:
+    import pathlib
+
 import ray
 
-from polars_cloud_ray.actors.utils import (
-    SubprocessRunMixin,
-    _handle_sigterm,
-)
+from polars_cloud_ray.actors.runtime import SubprocessRunMixin
+from polars_cloud_ray.actors.utils import _handle_sigterm
 from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
@@ -24,11 +26,12 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
     """Binary lifecycle management; inherit this to run the binary differently."""
 
     def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
-        self.config: PolarsLicenseServerRuntimeConfig = config
+        self.config_service: PolarsLicenseServerRuntimeConfig = config
 
         self.host: str = self._host(resolve_license_server_name())
 
         self._handle = None
+        self._config_paths: set[pathlib.Path] = self.config_service.config_paths()
 
         self.start()
         _handle_sigterm(self.stop)
@@ -43,17 +46,17 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
 
         logger.info("Starting license server on %s", self.host)
 
-        env = {**os.environ, **self.config.config()}
+        env = {**os.environ, **self.config_service.config()}
 
         self._start(
-            [self.config.binary_path],
+            [self.config_service.binary_path],
             env,
-            self.config.instance_name(resolve_license_server_name()),
+            self.config_service.instance_name(resolve_license_server_name()),
         )
 
     def stop(self) -> None:
         """Terminate the license server process."""
-        self._stop(self.config.instance_name(resolve_license_server_name()))
+        self._stop(self.config_service.instance_name(resolve_license_server_name()))
 
     def is_ready(self) -> bool:
         """Return whether the gRPC TLS listener is bound and serving."""
@@ -61,7 +64,7 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
             return False
         try:
             with urllib.request.urlopen(
-                f"http://127.0.0.1:{self.config.http_port}/readyz",
+                f"http://127.0.0.1:{self.config_service.http_port}/readyz",
                 timeout=0.5,
             ) as response:
                 return response.status == 200
@@ -74,11 +77,11 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
 
     def get_bind_addr(self) -> str:
         """Return the address of the gRPC service pc-cublet registers/pings against."""
-        return f"https://{self.host}:{self.config.grpc_port}"
+        return f"https://{self.host}:{self.config_service.grpc_port}"
 
     def get_metrics_addr(self) -> str:
         """Return the URL Prometheus gauges can be scraped from."""
-        return f"http://{self.host}:{self.config.http_port}/metrics"
+        return f"http://{self.host}:{self.config_service.http_port}/metrics"
 
     def get_license_server_pid(self) -> int | None:
         """Return the OS process ID of the license server binary subprocess."""

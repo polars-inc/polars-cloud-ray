@@ -1,3 +1,6 @@
+import logging
+import os
+
 from polars_cloud_ray.actors import (
     PolarsLicenseServerActor,
     PolarsScalerActor,
@@ -45,3 +48,5 @@ __all__ = [
     "PolarsWorkerConfig",
     "RayClusterContext",
 ]
+
+logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())

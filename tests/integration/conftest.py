@@ -141,7 +141,6 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         *,
         # cluster configuration
         worker_max_restarts: int = 3,
-        worker_memory_limit: int | None = None,
         # native binary configuration
         scaling_enabled: bool = False,
         num_workers: int = 0,
@@ -187,7 +186,6 @@ def ray_cluster_config() -> RayClusterConfigFactory:
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
-                memory_limit=worker_memory_limit,
                 task_port=_free_port_range(),
                 shuffle_port=_free_port_range(),
             ),
