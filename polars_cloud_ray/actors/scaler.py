@@ -148,9 +148,8 @@ class _ScalingHTTPServer(http.server.ThreadingHTTPServer):
         super().__init__(address, _ScalingRequestHandler)
 
 
-@ray.remote
-class PolarsScalerActor:
-    """Bridge service relaying scaling requests to the scheduler actor."""
+class _PolarsScalerActor:
+    """HTTP server lifecycle management; inherit this to configure it differently."""
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config: PolarsRayClusterConfig = config
@@ -164,15 +163,17 @@ class PolarsScalerActor:
     def __ray_shutdown__(self) -> None:
         self.stop()
 
+    def _bound_host(self) -> str:
+        return "127.0.0.1"
+
     def start(self) -> None:
         """Start the HTTP server, if not already running."""
         if self._http_server is None:
+            bind_host = self._bound_host()
+
             # fails with OSError if port is already used
             self._http_server = _ScalingHTTPServer(
-                (
-                    self.config.scheduler.scaling.bind_host,
-                    self.config.scheduler.scaling.port,
-                ),
+                (bind_host, self.config.scheduler.scaling.port),
                 self.config.cluster_id,
                 self.config.actor_response_timeout,
             )
@@ -184,7 +185,7 @@ class PolarsScalerActor:
 
             logger.info(
                 "Scaler HTTP server listening on %s:%d",
-                self.config.scheduler.scaling.bind_host,
+                bind_host,
                 self._http_server.server_port,
             )
 
@@ -199,3 +200,8 @@ class PolarsScalerActor:
     def is_ready(self) -> bool:
         """Return whether the HTTP server is listening."""
         return self._http_server is not None
+
+
+@ray.remote
+class PolarsScalerActor(_PolarsScalerActor):
+    """Bridge service relaying scaling requests to the scheduler actor."""
