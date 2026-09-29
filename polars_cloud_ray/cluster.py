@@ -49,12 +49,8 @@ class PolarsRayCluster:
             client_id="<SERVICE_ACCOUNT_ID>",
             client_secret="<SERVICE_ACCOUNT_SECRET>",
         ),
-        scheduler=PolarsSchedulerConfig(
-            observatory=PolarsObservatoryConfig(
-                database_path="/tmp/polars/observatory/observatory.db"
-            ),
-        ),
-        worker=PolarsWorkerConfig(),
+        scheduler=PolarsSchedulerConfig(...),
+        worker=PolarsWorkerConfig(...),
     )
 
     ray.init(address="auto", namespace=config.cluster_id)
