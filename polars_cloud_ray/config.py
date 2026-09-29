@@ -274,7 +274,7 @@ class PolarsServiceAccountLicenseConfig(BaseModel):
     client_secret: str = Field(description="Control-plane OAuth client secret.")
     workspace_id: str = Field(description="Control-plane workspace ID.")
     cert_dir: str = Field(
-        default="/etc/polars_license_cert",
+        default="/tmp/polars/license",
         description=(
             "Directory containing TLS certificates for control-plane communication."
         ),
@@ -332,10 +332,6 @@ class PolarsObservatoryConfig(BaseModel):
         default=True,
         description="Enable the observatory module.",
     )
-    cluster_mode: str = Field(
-        default="bare_metal",
-        description="Observatory cluster mode label.",
-    )
     max_metrics_bytes_total: int = Field(
         default=104857600,
         description="Maximum number of bytes for host metrics storage.",
@@ -345,7 +341,7 @@ class PolarsObservatoryConfig(BaseModel):
         description="Path metrics are periodically exported to, if set.",
     )
     database_path: str = Field(
-        default="/var/log/polars/observatory.db",
+        default="/tmp/polars/observatory/data.db",
         description=(
             "Path to the observatory SQLite database. Its parent directory must exist."
         ),
@@ -360,7 +356,9 @@ class PolarsObservatoryConfig(BaseModel):
     )
     rest_connection: PolarsTlsConnectionConfig | None = Field(
         default=None,
-        description="Require TLS on the REST API/dashboard service. Disabled if unset.",
+        description=(
+            "Require TLS on the REST API/dashboard service. Disabled if unset."
+        ),
     )
     rest_auth: PolarsJwksAuthConfig | None = Field(
         default=None,
@@ -382,7 +380,6 @@ class PolarsObservatoryConfig(BaseModel):
 
             d |= {
                 "max_metrics_bytes_total": self.max_metrics_bytes_total,
-                "cluster_mode": self.cluster_mode,
                 "database_path": self.database_path,
                 "service": {"bind_addr": f":{self.otlp_port}"},
                 "rest_api": {"service": rest_service},
@@ -879,6 +876,7 @@ class PolarsRayClusterConfig(BaseModel):
         doc: dict = {
             "instance_id": "scheduler",
             "cluster_id": self.cluster_id,
+            # "cluster_mode": "ray",
             "memory_limit": self.scheduler.memory_limit,
             "cpu_reserved": (
                 None
@@ -916,6 +914,7 @@ class PolarsRayClusterConfig(BaseModel):
         doc: dict = {
             "instance_id": f"worker-{worker_id}",
             "cluster_id": self.cluster_id,
+            # "cluster_mode": "ray",
             "memory_limit": self.worker.memory_limit,
             "cpu_reserved": (
                 None
@@ -970,20 +969,26 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
     # native binary configuration
     grpc_port: int = Field(
         default=50051,
-        description="Port for the gRPC (TLS) service pc-cublet registers/pings against.",
+        description=(
+            "Port for the gRPC (TLS) service pc-cublet registers/pings against."
+        ),
     )
     http_port: int = Field(
         default=8081,
         description="Port for the plain-HTTP `/healthz`, `/readyz`, `/metrics` probes.",
     )
     report_dir: str = Field(
-        description="Directory holding the SQLite state DB and the signed report ledger.",
+        description=(
+            "Directory holding the SQLite state DB and the signed report ledger."
+        ),
     )
     license_path: str = Field(
         description="Path to the Polars-signed license file.",
     )
     tls_bundle_path: str = Field(
-        description="Path to the combined PEM bundle holding the license-server TLS material.",
+        description=(
+            "Path to the combined PEM bundle holding the license-server TLS material."
+        ),
     )
     db_disable_file_locking: bool = Field(
         default=False,

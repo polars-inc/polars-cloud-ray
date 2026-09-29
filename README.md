@@ -25,7 +25,7 @@ function properly:
 export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
 
 # need to match the config if manually changed
-mkdir --parents /tmp/polars/{anonymous-results,observatory,shuffle-data,temporary-data}
+mkdir --parents /tmp/polars/{anonymous-results,license,observatory,shuffle-data,temporary-data}
 ```
 
 This latter can be started using the following command:
@@ -42,10 +42,12 @@ ray start \
 
 If you do not already have one, create a Polars service account through the
 [cloud portal](https://cloud.pola.rs/api/redirects/register).
-Pull the Polars On-Prem binary locally, and remember its local path:
+Pull the Polars On-Prem binary locally (available versions are listed on our
+[Releases](https://docs.cloud.pola.rs/polars-on-premises/releases/) page), and
+remember its local path:
 
 ```sh
-wget https://cdn.onprem.pola.rs/polars-on-premises-0.8.6-linux-x86
+wget https://cdn.onprem.pola.rs/polars-on-premises-<VERSION>-linux-x64
 ```
 
 Spawn a local multinode cluster:
@@ -73,12 +75,8 @@ config = PolarsRayClusterConfig(
         client_id="<SERVICE_ACCOUNT_ID>",
         client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
-    scheduler=PolarsSchedulerConfig(
-        observatory=PolarsObservatoryConfig(
-            database_path="/tmp/polars/observatory/observatory.db"
-        ),
-    ),
-    worker=PolarsWorkerConfig(),
+    scheduler=PolarsSchedulerConfig(...),
+    worker=PolarsWorkerConfig(...),
 )
 
 ray.init(address="auto", namespace=config.cluster_id)
@@ -121,12 +119,8 @@ config = PolarsRayClusterConfig(
         client_id="<SERVICE_ACCOUNT_ID>",
         client_secret="<SERVICE_ACCOUNT_SECRET>",
     ),
-    scheduler=PolarsSchedulerConfig(
-        observatory=PolarsObservatoryConfig(
-            database_path="/tmp/polars/observatory/observatory.db"
-        ),
-    ),
-    worker=PolarsWorkerConfig(),
+    scheduler=PolarsSchedulerConfig(...),
+    worker=PolarsWorkerConfig(...),
 )
 
 ray.init(address="auto", namespace=config.cluster_id)
