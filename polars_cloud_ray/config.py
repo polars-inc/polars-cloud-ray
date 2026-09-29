@@ -876,7 +876,7 @@ class PolarsRayClusterConfig(BaseModel):
         doc: dict = {
             "instance_id": "scheduler",
             "cluster_id": self.cluster_id,
-            "cluster_mode": "ray",
+            # "cluster_mode": "ray",
             "memory_limit": self.scheduler.memory_limit,
             "cpu_reserved": (
                 None
@@ -914,7 +914,7 @@ class PolarsRayClusterConfig(BaseModel):
         doc: dict = {
             "instance_id": f"worker-{worker_id}",
             "cluster_id": self.cluster_id,
-            "cluster_mode": "ray",
+            # "cluster_mode": "ray",
             "memory_limit": self.worker.memory_limit,
             "cpu_reserved": (
                 None
