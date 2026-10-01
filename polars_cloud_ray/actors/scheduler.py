@@ -9,6 +9,7 @@ import ray
 from polars_cloud_ray.actors.runtime import SubprocessRunMixin
 from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
+    _raise_if_exited,
     list_actor_names,
     resolve_actor_handles,
     terminate_actors,
@@ -136,6 +137,8 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
+        _raise_if_exited(resolve_scheduler_name(), self._exit_code())
+
         return self._is_alive() and self._is_listening(
             resolve_scheduler_name(),
             self.config_cluster.scheduler.worker_registration_port,

@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 import ray
 
 from polars_cloud_ray.actors.runtime import SubprocessRunMixin
-from polars_cloud_ray.actors.utils import _handle_sigterm
+from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
 from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
@@ -60,8 +60,11 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the gRPC TLS listener is bound and serving."""
+        _raise_if_exited(resolve_license_server_name(), self._exit_code())
+
         if not self._is_alive():
             return False
+
         try:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{self.config_service.http_port}/readyz",

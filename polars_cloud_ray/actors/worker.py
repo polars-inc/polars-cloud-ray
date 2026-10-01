@@ -8,7 +8,7 @@ import typing
 import ray
 
 from polars_cloud_ray.actors.runtime import SubprocessRunMixin
-from polars_cloud_ray.actors.utils import _handle_sigterm
+from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
@@ -115,13 +115,14 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the worker process is alive and listening for tasks."""
-        port = (
-            self.config_cluster.worker.task_port
-            + self.config_cluster._worker_port_offset(self.worker_id)
-        )
+        _raise_if_exited(resolve_worker_name(self.worker_id), self._exit_code())
+
         return self._is_alive() and self._is_listening(
             resolve_worker_name(self.worker_id),
-            port,
+            (
+                self.config_cluster.worker.task_port
+                + self.config_cluster._worker_port_offset(self.worker_id)
+            ),
         )
 
     def get_worker_pid(self) -> int | None:

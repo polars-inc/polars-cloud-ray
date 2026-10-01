@@ -23,6 +23,20 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
     signal.signal(signal.SIGTERM, _handler)
 
 
+def _raise_if_exited(name: str, exit_code: int | None) -> None:
+    # nothing restarts the underlying binary, so waiting for it is pointless
+    if exit_code is None:
+        return
+
+    reason = (
+        f"was killed by signal {-exit_code}"
+        if exit_code < 0
+        else f"exited with code {exit_code}"
+    )
+    msg = f"{name} {reason}, see the actor logs for its output"
+    raise RuntimeError(msg)
+
+
 def list_actor_names(cluster_id: str, prefix: str) -> set[str]:
     return {
         actor.name

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class SubprocessRunMixin:
     """Run the binary as a subprocess of the actor.
 
-    The seven methods below are the only spots an actor touches what it launched and
+    The eight methods below are the only spots an actor touches what it launched and
     how it can be accessed, so an alternative managing context (a container, or a
     `systemd-run` scope for instance) needs to overwrite them.
 
@@ -100,6 +100,9 @@ class SubprocessRunMixin:
                 return True
         except OSError:
             return False
+
+    def _exit_code(self) -> int | None:
+        return self._handle.poll() if self._handle is not None else None
 
     def _pid(self) -> int | None:
         return self._handle.pid if self._handle is not None else None
