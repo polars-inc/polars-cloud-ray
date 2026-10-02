@@ -2,40 +2,33 @@ import logging
 import pathlib
 import socket
 import subprocess
-import typing
 
 import psutil
 import toml
 
+from polars_cloud_ray.actors.runtimes.base import Runner
+from polars_cloud_ray.config import PolarsSubprocessConfig
+
 logger = logging.getLogger(__name__)
 
 
-class SubprocessRunMixin:
-    """Run the binary as a subprocess of the actor.
+class SubprocessRunner(Runner):
+    """Run the binary as a subprocess of the actor, as a system process on the host."""
 
-    The eight methods below are the only spots an actor touches what it launched and
-    how it can be accessed, so an alternative managing context (a container, or a
-    `systemd-run` scope for instance) needs to overwrite them.
+    runtime: PolarsSubprocessConfig
 
-    These methods are inherited, and the whole process lifecycle around them remains
-    untouched. `_handle` is whatever that context needs to identify what it started.
-    """
+    _handle: subprocess.Popen[bytes] | None
 
-    _handle: typing.Any | None = None
-
-    def _host(self, instance_id: str) -> str:  # noqa: ARG002
+    def host(self) -> str:
         return socket.gethostbyname(socket.gethostname())
 
-    def _start(self, args: list[str], env: dict[str, str], name: str) -> None:
-        self._handle = subprocess.Popen(
-            [self._runtime.binary_path, *args],  # type: ignore[attr-defined]
-            env=env,
-        )
-        logger.info("Process ID of %s: %d", name, self._handle.pid)
+    def start(self, args: list[str], env: dict[str, str]) -> None:
+        self._handle = subprocess.Popen([self.runtime.binary_path, *args], env=env)
+        logger.info("Process ID of %s: %d", self.name, self._handle.pid)
 
-    def _stop(self, name: str) -> None:
+    def stop(self) -> None:
         if self._handle is not None:
-            logger.info("Stopping %s (%d)", name, self._handle.pid)
+            logger.info("Stopping %s (%d)", self.name, self._handle.pid)
             self._handle.terminate()
             try:
                 self._handle.wait(timeout=10)
@@ -44,7 +37,7 @@ class SubprocessRunMixin:
                 self._handle.wait()
         self._handle = None
 
-    def _stop_orphans(self, instance_id: str, ports: list[int]) -> None:
+    def stop_orphans(self, cluster_id: str, ports: list[int]) -> None:
         for process in psutil.process_iter():
             try:
                 port = next(
@@ -64,7 +57,7 @@ class SubprocessRunMixin:
 
             msg = f"Port {port} is already in use by process ID {process.pid} "
 
-            if cmdline[0] != self._runtime.binary_path:  # type: ignore[attr-defined]
+            if cmdline[0] != self.runtime.binary_path:
                 msg += "which does not look like one of our own processes."
                 raise RuntimeError(msg)
 
@@ -74,17 +67,17 @@ class SubprocessRunMixin:
                 msg += "but we cannot confirm if it is a stale instance."
                 raise RuntimeError(msg) from exc
 
-            if stale_config.get("cluster_id") != self.config_cluster.cluster_id:  # type: ignore[attr-defined]
+            if stale_config.get("cluster_id") != cluster_id:
                 msg += f"by a different cluster ('{stale_config.get('cluster_id')}')."
                 raise RuntimeError(msg)
 
-            if stale_config.get("instance_id") != instance_id:
+            if stale_config.get("instance_id") != self.instance_id:
                 msg += f"by a different instance ('{stale_config.get('instance_id')}')."
                 raise RuntimeError(msg)
 
             logger.warning(
                 "Cleaning orphan '%s' process left over from a previous crash",
-                instance_id,
+                self.instance_id,
             )
 
             process.terminate()
@@ -94,18 +87,18 @@ class SubprocessRunMixin:
                 process.kill()
                 process.wait()
 
-    def _is_alive(self) -> bool:
+    def is_alive(self) -> bool:
         return self._handle is not None and self._handle.poll() is None
 
-    def _is_listening(self, instance_id: str, port: int) -> bool:
+    def is_listening(self, port: int) -> bool:
         try:
-            with socket.create_connection((self._host(instance_id), port), timeout=0.5):
+            with socket.create_connection((self.host(), port), timeout=0.5):
                 return True
         except OSError:
             return False
 
-    def _exit_code(self) -> int | None:
+    def exit_code(self) -> int | None:
         return self._handle.poll() if self._handle is not None else None
 
-    def _pid(self) -> int | None:
+    def pid(self) -> int | None:
         return self._handle.pid if self._handle is not None else None

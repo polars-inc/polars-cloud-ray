@@ -811,7 +811,7 @@ class PolarsWorkerConfig(BaseModel):
 
 
 class PolarsSubprocessConfig(BaseModel):
-    """Run the binary as a subprocess of its actor, on the host."""
+    """Run the binary as a subprocess of the actor, as a system process on the host."""
 
     model_config = ConfigDict(frozen=True)
 

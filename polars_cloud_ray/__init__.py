@@ -26,13 +26,12 @@ from polars_cloud_ray.config import (
     PolarsWorkerConfig,
 )
 from polars_cloud_ray.context import RayClusterContext
-from polars_cloud_ray.license_server import PolarsLicenseServer
+from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
 __all__ = [
     "PolarsCheckpointConfig",
     "PolarsEnterpriseLicenseConfig",
     "PolarsLicenseConfig",
-    "PolarsLicenseServer",
     "PolarsLicenseServerActor",
     "PolarsLicenseServerConfig",
     "PolarsLineageConfig",
@@ -40,6 +39,7 @@ __all__ = [
     "PolarsObservatoryConfig",
     "PolarsRayCluster",
     "PolarsRayClusterConfig",
+    "PolarsRayLicenseServer",
     "PolarsRayLicenseServerConfig",
     "PolarsRuntimeConfig",
     "PolarsScalerActor",

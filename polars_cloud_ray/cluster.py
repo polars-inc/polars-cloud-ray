@@ -7,10 +7,11 @@ from ray.exceptions import GetTimeoutError
 
 from polars_cloud_ray.actors import (
     WORKER_NAME_PREFIX,
-    RuntimeActors,
+    PolarsScalerActor,
+    PolarsSchedulerActor,
+    PolarsWorkerActor,
     list_actor_names,
     resolve_actor_handles,
-    resolve_runtime_actors,
     resolve_scaler_name,
     resolve_scheduler_name,
     resolve_worker_name,
@@ -78,10 +79,6 @@ class PolarsRayCluster:
         self._scheduler_actor: typing.Any = None
         self._worker_actors: list[typing.Any] = []
 
-    @property
-    def _actors(self) -> RuntimeActors:
-        return resolve_runtime_actors(self.config.runtime)
-
     def _actor_exists(self, name: str) -> bool:
         try:
             ray.get_actor(name, namespace=self.config.cluster_id)
@@ -103,7 +100,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scheduler actor")
             return
 
-        self._scheduler_actor = self._actors.scheduler.options(
+        self._scheduler_actor = PolarsSchedulerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
@@ -131,7 +128,7 @@ class PolarsRayCluster:
                 actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
                 logger.info("Reconnected to existing worker %s", actor_name)
             except ValueError:
-                actor = self._actors.worker.options(
+                actor = PolarsWorkerActor.options(  # type: ignore[attr-defined]
                     name=actor_name,
                     namespace=self.config.cluster_id,
                     lifetime="detached",
@@ -159,7 +156,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scaler actor")
             return
 
-        self._scaler_actor = self._actors.scaler.options(
+        self._scaler_actor = PolarsScalerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",

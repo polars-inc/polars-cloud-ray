@@ -1,7 +1,3 @@
-import typing
-
-from pydantic import BaseModel
-
 from polars_cloud_ray.actors.license_server import (
     LICENSE_SERVER_NAME_PREFIX,
     PolarsLicenseServerActor,
@@ -27,40 +23,8 @@ from polars_cloud_ray.actors.worker import (
     PolarsWorkerActor,
     resolve_worker_name,
 )
-from polars_cloud_ray.config import PolarsSubprocessConfig
-
-
-class RuntimeActors(typing.NamedTuple):
-    license_server: typing.Any
-    scaler: typing.Any
-    scheduler: typing.Any
-    worker: typing.Any
-
-
-ACTORS: dict[type[BaseModel], RuntimeActors] = {
-    PolarsSubprocessConfig: RuntimeActors(
-        license_server=PolarsLicenseServerActor,
-        scaler=PolarsScalerActor,
-        scheduler=PolarsSchedulerActor,
-        worker=PolarsWorkerActor,
-    ),
-}
-
-
-def resolve_runtime_actors(runtime: BaseModel) -> RuntimeActors:
-    """Return the actor classes running the binaries under the `runtime` given."""
-    try:
-        return ACTORS[type(runtime)]
-    except KeyError:
-        msg = (
-            f"No actors registered for the '{type(runtime).__name__}' runtime; "
-            "add them to 'polars_cloud_ray.actors.ACTORS'."
-        )
-        raise ValueError(msg) from None
-
 
 __all__ = [
-    "ACTORS",
     "LICENSE_SERVER_NAME_PREFIX",
     "SCALER_NAME_PREFIX",
     "SCHEDULER_NAME_PREFIX",
@@ -69,11 +33,9 @@ __all__ = [
     "PolarsScalerActor",
     "PolarsSchedulerActor",
     "PolarsWorkerActor",
-    "RuntimeActors",
     "list_actor_names",
     "resolve_actor_handles",
     "resolve_license_server_name",
-    "resolve_runtime_actors",
     "resolve_scaler_name",
     "resolve_scheduler_name",
     "resolve_worker_name",

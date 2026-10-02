@@ -7,11 +7,9 @@ import urllib.request
 if typing.TYPE_CHECKING:
     import pathlib
 
-    from polars_cloud_ray.config import PolarsRuntimeConfig
-
 import ray
 
-from polars_cloud_ray.actors.runtime import SubprocessRunMixin
+from polars_cloud_ray.actors.runtimes import resolve_runner
 from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
 from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 
@@ -24,16 +22,21 @@ def resolve_license_server_name() -> str:
     return LICENSE_SERVER_NAME_PREFIX
 
 
-class _PolarsLicenseServerActor(SubprocessRunMixin):
-    """Binary lifecycle management; inherit this to run the binary differently."""
+@ray.remote
+class PolarsLicenseServerActor:
+    """The air-gapped offline license validation and reporting service."""
 
     def __init__(self, config: PolarsRayLicenseServerConfig) -> None:
         self.config_service: PolarsRayLicenseServerConfig = config
 
-        self.host: str = self._host(resolve_license_server_name())
-
-        self._handle = None
         self._config_paths: set[pathlib.Path] = self.config_service.config_paths()
+        self._runner = resolve_runner(
+            config.runtime,
+            resolve_license_server_name(),
+            config.instance_name(resolve_license_server_name()),
+        )
+
+        self.host: str = self._runner.host()
 
         self.start()
         _handle_sigterm(self.stop)
@@ -41,13 +44,9 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
     def __ray_shutdown__(self) -> None:
         self.stop()
 
-    @property
-    def _runtime(self) -> "PolarsRuntimeConfig":
-        return self.config_service.runtime
-
     def start(self) -> None:
         """Spawn the license server process, if not already running."""
-        if self._handle is not None:
+        if self._runner._lock:
             return
 
         logger.info("Starting license server on %s", self.host)
@@ -55,21 +54,17 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
         args: list[str] = []
         env: dict[str, str] = {**os.environ, **self.config_service.config()}
 
-        self._start(
-            args,
-            env,
-            self.config_service.instance_name(resolve_license_server_name()),
-        )
+        self._runner.start(args, env)
 
     def stop(self) -> None:
         """Terminate the license server process."""
-        self._stop(self.config_service.instance_name(resolve_license_server_name()))
+        self._runner.stop()
 
     def is_ready(self) -> bool:
         """Return whether the gRPC TLS listener is bound and serving."""
-        _raise_if_exited(resolve_license_server_name(), self._exit_code())
+        _raise_if_exited(resolve_license_server_name(), self._runner.exit_code())
 
-        if not self._is_alive():
+        if not self._runner.is_alive():
             return False
 
         try:
@@ -95,9 +90,4 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
 
     def get_license_server_pid(self) -> int | None:
         """Return the OS process ID of the license server binary subprocess."""
-        return self._pid()
-
-
-@ray.remote
-class PolarsLicenseServerActor(_PolarsLicenseServerActor):
-    """The air-gapped offline license validation and reporting service."""
+        return self._runner.pid()

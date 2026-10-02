@@ -6,9 +6,8 @@ import ray
 from ray.exceptions import GetTimeoutError
 
 from polars_cloud_ray.actors import (
-    RuntimeActors,
+    PolarsLicenseServerActor,
     resolve_license_server_name,
-    resolve_runtime_actors,
     terminate_actors,
 )
 from polars_cloud_ray.config import PolarsRayLicenseServerConfig
@@ -16,14 +15,14 @@ from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 logger = logging.getLogger(__name__)
 
 
-class PolarsLicenseServer:
+class PolarsRayLicenseServer:
     """Manage the lifecycle of the standalone license server actor.
 
     ```py
     import ray
 
     from polars_cloud_ray.config import PolarsRayLicenseServerConfig
-    from polars_cloud_ray.license_server import PolarsLicenseServer
+    from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
     config = PolarsRayLicenseServerConfig(
         report_dir="/var/log/polars/license-server",
@@ -32,7 +31,7 @@ class PolarsLicenseServer:
     )
 
     ray.init(address="auto", namespace="polars-onprem-license-server")
-    license_server = PolarsLicenseServer(config)
+    license_server = PolarsRayLicenseServer(config)
     license_server.start()
 
     print(license_server.get_bind_addr())
@@ -47,10 +46,6 @@ class PolarsLicenseServer:
 
         self._actor: typing.Any = None
 
-    @property
-    def _actors(self) -> RuntimeActors:
-        return resolve_runtime_actors(self.config.runtime)
-
     def _start_actor(self) -> None:
         actor_name = resolve_license_server_name()
 
@@ -62,7 +57,7 @@ class PolarsLicenseServer:
             logger.info("Reconnected to existing license server actor")
             return
 
-        self._actor = self._actors.license_server.options(
+        self._actor = PolarsLicenseServerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             lifetime="detached",
             resources={"head": 0.001},  # pinning

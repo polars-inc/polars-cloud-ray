@@ -189,10 +189,10 @@ The HTTP server is unauthenticated and binds `127.0.0.1`. It accepts only
 
 ## License server
 
-`PolarsLicenseServer` manages a `pc-license-server` process, Polars On-Prem's
-offline license server: clusters point their configuration at it via
+`PolarsRayLicenseServer` manages the Polars On-Prem offline license server
+binary as a Ray actor. Ray clusters point their configuration at it via
 `PolarsLicenseServerConfig(uri=...)` and it validates them locally, tracking
-usage into signed reports it periodically emits (and optionally uploads to the
+usage into signed reports it periodically emits (and optionally uploads to our
 control plane).
 
 It is standalone: unlike the scheduler/worker/scaler, it is not wired into
@@ -208,7 +208,7 @@ from polars_cloud_ray.config import (
     PolarsRayLicenseServerConfig,
     PolarsSubprocessConfig,
 )
-from polars_cloud_ray.license_server import PolarsLicenseServer
+from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
 config = PolarsRayLicenseServerConfig(
     runtime=PolarsSubprocessConfig(binary_path="/path/to/binary"),
@@ -218,7 +218,7 @@ config = PolarsRayLicenseServerConfig(
 )
 
 ray.init(address="auto", namespace="license-server")
-license_server = PolarsLicenseServer(config)
+license_server = PolarsRayLicenseServer(config)
 license_server.start()
 ```
 
@@ -232,7 +232,7 @@ license = PolarsLicenseServerConfig(uri=license_server.get_bind_addr())
 
 To reconnect to (or stop) an already-running license server from another
 process, call `ray.init()` with the same namespace it was started under, then
-`PolarsLicenseServer(config).start()` (reconnects) or `.stop()`.
+`PolarsRayLicenseServer(config).start()` (reconnects) or `.stop()`.
 
 ## Resource requests and limits
 

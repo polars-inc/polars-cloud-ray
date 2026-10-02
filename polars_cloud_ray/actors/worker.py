@@ -7,12 +7,12 @@ import typing
 
 import ray
 
-from polars_cloud_ray.actors.runtime import SubprocessRunMixin
+from polars_cloud_ray.actors.runtimes import resolve_runner
 from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsRuntimeConfig, PolarsWorkerConfig
+    from polars_cloud_ray.config import PolarsWorkerConfig
 
 WORKER_NAME_PREFIX = "worker"
 
@@ -27,8 +27,9 @@ def _resolve_worker_name_regex() -> re.Pattern:
     return re.compile(rf"^{WORKER_NAME_PREFIX}-(\d+)$")
 
 
-class _PolarsWorkerActor(SubprocessRunMixin):
-    """Binary lifecycle management; inherit this to run the binary differently."""
+@ray.remote
+class PolarsWorkerActor:
+    """The computing service, accepting tasks from the scheduler."""
 
     def __init__(
         self,
@@ -40,7 +41,6 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         self.config_service: PolarsWorkerConfig = config.worker
 
         self.worker_id = worker_id
-        self.worker_host: str = self._host(resolve_worker_name(worker_id))
         self.worker_name: str = resolve_worker_name(worker_id)
         self.scheduler_host = scheduler_host
 
@@ -48,7 +48,13 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         self._config_paths: set[pathlib.Path] = (
             self.config_cluster.config_paths_worker()
         )
-        self._handle = None
+        self._runner = resolve_runner(
+            config.runtime,
+            self.worker_name,
+            config.instance_name(self.worker_name),
+        )
+
+        self.worker_host: str = self._runner.host()
 
         self.start()
         _handle_sigterm(self.stop)
@@ -56,19 +62,15 @@ class _PolarsWorkerActor(SubprocessRunMixin):
     def __ray_shutdown__(self) -> None:
         self.stop()
 
-    @property
-    def _runtime(self) -> "PolarsRuntimeConfig":
-        return self.config_cluster.runtime
-
     def start(self) -> None:
         """Spawn the worker process, if not already running."""
-        if self._handle is not None:
+        if self._runner._lock:
             return
 
         offset = self.config_cluster._worker_port_offset(self.worker_id)
 
-        self._stop_orphans(
-            self.worker_name,
+        self._runner.stop_orphans(
+            self.config_cluster.cluster_id,
             [
                 self.config_cluster.worker.task_port + offset,
                 self.config_cluster.worker.shuffle_port + offset,
@@ -96,17 +98,11 @@ class _PolarsWorkerActor(SubprocessRunMixin):
             "RUST_BACKTRACE": self.config_cluster.rust_backtrace,
         }
 
-        self._start(
-            args,
-            env,
-            self.config_cluster.instance_name(resolve_worker_name(self.worker_id)),
-        )
+        self._runner.start(args, env)
 
     def stop(self) -> None:
         """Terminate the worker process and clean up."""
-        self._stop(
-            self.config_cluster.instance_name(resolve_worker_name(self.worker_id))
-        )
+        self._runner.stop()
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -114,21 +110,13 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the worker process is alive and listening for tasks."""
-        _raise_if_exited(resolve_worker_name(self.worker_id), self._exit_code())
+        _raise_if_exited(self.worker_name, self._runner.exit_code())
 
-        return self._is_alive() and self._is_listening(
-            resolve_worker_name(self.worker_id),
-            (
-                self.config_cluster.worker.task_port
-                + self.config_cluster._worker_port_offset(self.worker_id)
-            ),
+        return self._runner.is_alive() and self._runner.is_listening(
+            self.config_cluster.worker.task_port
+            + self.config_cluster._worker_port_offset(self.worker_id)
         )
 
     def get_worker_pid(self) -> int | None:
         """Return the OS process ID of the worker binary subprocess."""
-        return self._pid()
-
-
-@ray.remote
-class PolarsWorkerActor(_PolarsWorkerActor):
-    """The computing service, accepting tasks from the scheduler."""
+        return self._runner.pid()

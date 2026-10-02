@@ -6,7 +6,7 @@ import typing
 
 import ray
 
-from polars_cloud_ray.actors.runtime import SubprocessRunMixin
+from polars_cloud_ray.actors.runtimes import resolve_runner
 from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
     _raise_if_exited,
@@ -23,7 +23,7 @@ from polars_cloud_ray.actors.worker import (
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsRuntimeConfig, PolarsSchedulerConfig
+    from polars_cloud_ray.config import PolarsSchedulerConfig
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 
@@ -34,23 +34,27 @@ def resolve_scheduler_name() -> str:
     return SCHEDULER_NAME_PREFIX
 
 
-class _PolarsSchedulerActor(SubprocessRunMixin):
-    """Binary lifecycle management; inherit this to run the binary differently."""
-
-    worker_actor_cls: typing.ClassVar[typing.Any]
+@ray.remote
+class PolarsSchedulerActor:
+    """The central service, distributing tasks and piloting autoscaling."""
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config_cluster: PolarsRayClusterConfig = config
         self.config_service: PolarsSchedulerConfig = config.scheduler
 
-        self.scheduler_host: str = self._host(resolve_scheduler_name())
         self.num_workers: int = config.num_workers  # initial value
 
         self._config_path: str | None = None
         self._config_paths: set[pathlib.Path] = (
             self.config_cluster.config_paths_scheduler()
         )
-        self._handle = None
+        self._runner = resolve_runner(
+            config.runtime,
+            resolve_scheduler_name(),
+            config.instance_name(resolve_scheduler_name()),
+        )
+
+        self.scheduler_host: str = self._runner.host()
 
         self.start()
         _handle_sigterm(self.stop)
@@ -58,14 +62,10 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
     def __ray_shutdown__(self) -> None:
         self.stop()
 
-    @property
-    def _runtime(self) -> "PolarsRuntimeConfig":
-        return self.config_cluster.runtime
-
     def _add_worker(self, worker_id: int) -> None:
         actor_name = resolve_worker_name(worker_id)
 
-        self.worker_actor_cls.options(  # type: ignore[attr-defined]
+        PolarsWorkerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
             namespace=self.config_cluster.cluster_id,
             lifetime="detached",
@@ -89,11 +89,11 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def start(self) -> None:
         """Spawn the scheduler process, if not already running."""
-        if self._handle is not None:
+        if self._runner._lock:
             return
 
-        self._stop_orphans(
-            resolve_scheduler_name(),
+        self._runner.stop_orphans(
+            self.config_cluster.cluster_id,
             [
                 self.config_cluster.scheduler.worker_registration_port,
                 self.config_cluster.scheduler.client_port,
@@ -120,15 +120,11 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
             "RUST_BACKTRACE": self.config_cluster.rust_backtrace,
         }
 
-        self._start(
-            args,
-            env,
-            self.config_cluster.instance_name(resolve_scheduler_name()),
-        )
+        self._runner.start(args, env)
 
     def stop(self) -> None:
         """Terminate the scheduler process and clean up."""
-        self._stop(self.config_cluster.instance_name(resolve_scheduler_name()))
+        self._runner.stop()
 
         if self._config_path is not None:
             pathlib.Path(self._config_path).unlink()
@@ -136,11 +132,10 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
-        _raise_if_exited(resolve_scheduler_name(), self._exit_code())
+        _raise_if_exited(resolve_scheduler_name(), self._runner.exit_code())
 
-        return self._is_alive() and self._is_listening(
-            resolve_scheduler_name(),
-            self.config_cluster.scheduler.worker_registration_port,
+        return self._runner.is_alive() and self._runner.is_listening(
+            self.config_cluster.scheduler.worker_registration_port
         )
 
     def get_host(self) -> str:
@@ -161,7 +156,7 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def get_scheduler_pid(self) -> int | None:
         """Return the OS process ID of the scheduler binary subprocess."""
-        return self._pid()
+        return self._runner.pid()
 
     def get_scaling_status(self) -> dict[str, int | set[str] | None]:
         """Return the current/desired worker counts and configured bounds."""
@@ -258,10 +253,3 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
             self._remove_workers(to_remove)
 
         self.num_workers = num_workers  # new value
-
-
-@ray.remote
-class PolarsSchedulerActor(_PolarsSchedulerActor):
-    """The central service, distributing tasks and piloting autoscaling."""
-
-    worker_actor_cls = PolarsWorkerActor
