@@ -12,7 +12,7 @@ from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsWorkerConfig
+    from polars_cloud_ray.config import PolarsRuntimeConfig, PolarsWorkerConfig
 
 WORKER_NAME_PREFIX = "worker"
 
@@ -56,6 +56,10 @@ class _PolarsWorkerActor(SubprocessRunMixin):
     def __ray_shutdown__(self) -> None:
         self.stop()
 
+    @property
+    def _runtime(self) -> "PolarsRuntimeConfig":
+        return self.config_cluster.runtime
+
     def start(self) -> None:
         """Spawn the worker process, if not already running."""
         if self._handle is not None:
@@ -83,13 +87,8 @@ class _PolarsWorkerActor(SubprocessRunMixin):
 
         logger.info("Starting %s on %s", self.worker_name, self.worker_host)
 
-        cmd = [
-            self.config_cluster.binary_path,
-            "service",
-            "--config-path",
-            self._config_path,
-        ]
-        env = {
+        args: list[str] = ["service", "--config-path", self._config_path]
+        env: dict[str, str] = {
             **os.environ,
             "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
             "POLARS_TEMP_DIR": self.config_cluster.worker.temporary_data_dir,
@@ -98,7 +97,7 @@ class _PolarsWorkerActor(SubprocessRunMixin):
         }
 
         self._start(
-            cmd,
+            args,
             env,
             self.config_cluster.instance_name(resolve_worker_name(self.worker_id)),
         )

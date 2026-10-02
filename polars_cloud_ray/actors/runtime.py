@@ -26,8 +26,11 @@ class SubprocessRunMixin:
     def _host(self, instance_id: str) -> str:  # noqa: ARG002
         return socket.gethostbyname(socket.gethostname())
 
-    def _start(self, cmd: list[str], env: dict[str, str], name: str) -> None:
-        self._handle = subprocess.Popen(cmd, env=env)
+    def _start(self, args: list[str], env: dict[str, str], name: str) -> None:
+        self._handle = subprocess.Popen(
+            [self._runtime.binary_path, *args],  # type: ignore[attr-defined]
+            env=env,
+        )
         logger.info("Process ID of %s: %d", name, self._handle.pid)
 
     def _stop(self, name: str) -> None:
@@ -61,7 +64,7 @@ class SubprocessRunMixin:
 
             msg = f"Port {port} is already in use by process ID {process.pid} "
 
-            if cmdline[0] != self.config_cluster.binary_path:  # type: ignore[attr-defined]
+            if cmdline[0] != self._runtime.binary_path:  # type: ignore[attr-defined]
                 msg += "which does not look like one of our own processes."
                 raise RuntimeError(msg)
 

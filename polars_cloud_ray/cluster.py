@@ -7,11 +7,10 @@ from ray.exceptions import GetTimeoutError
 
 from polars_cloud_ray.actors import (
     WORKER_NAME_PREFIX,
-    PolarsScalerActor,
-    PolarsSchedulerActor,
-    PolarsWorkerActor,
+    RuntimeActors,
     list_actor_names,
     resolve_actor_handles,
+    resolve_runtime_actors,
     resolve_scaler_name,
     resolve_scheduler_name,
     resolve_worker_name,
@@ -36,11 +35,15 @@ class PolarsRayCluster:
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
         PolarsServiceAccountLicenseConfig,
+        PolarsSubprocessConfig,
         PolarsWorkerConfig,
     )
 
     config = PolarsRayClusterConfig(
-        # single_host_cluster=True,
+        runtime=PolarsSubprocessConfig(
+            binary_path="/path/to/binary",
+            # single_host_cluster=True,
+        ),
         num_workers=4,
         license=PolarsServiceAccountLicenseConfig(
             workspace_id="<WORKSPACE_ID>",
@@ -68,16 +71,16 @@ class PolarsRayCluster:
     ```
     """
 
-    scheduler_actor_cls: typing.ClassVar[typing.Any] = PolarsSchedulerActor
-    worker_actor_cls: typing.ClassVar[typing.Any] = PolarsWorkerActor
-    scaler_actor_cls: typing.ClassVar[typing.Any] = PolarsScalerActor
-
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config = config
 
         self._scaler_actor: typing.Any = None
         self._scheduler_actor: typing.Any = None
         self._worker_actors: list[typing.Any] = []
+
+    @property
+    def _actors(self) -> RuntimeActors:
+        return resolve_runtime_actors(self.config.runtime)
 
     def _actor_exists(self, name: str) -> bool:
         try:
@@ -100,7 +103,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scheduler actor")
             return
 
-        self._scheduler_actor = self.scheduler_actor_cls.options(  # type: ignore[attr-defined]
+        self._scheduler_actor = self._actors.scheduler.options(
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
@@ -128,7 +131,7 @@ class PolarsRayCluster:
                 actor = ray.get_actor(actor_name, namespace=self.config.cluster_id)
                 logger.info("Reconnected to existing worker %s", actor_name)
             except ValueError:
-                actor = self.worker_actor_cls.options(  # type: ignore[attr-defined]
+                actor = self._actors.worker.options(
                     name=actor_name,
                     namespace=self.config.cluster_id,
                     lifetime="detached",
@@ -156,7 +159,7 @@ class PolarsRayCluster:
             logger.info("Reconnected to existing scaler actor")
             return
 
-        self._scaler_actor = self.scaler_actor_cls.options(  # type: ignore[attr-defined]
+        self._scaler_actor = self._actors.scaler.options(
             name=actor_name,
             namespace=self.config.cluster_id,
             lifetime="detached",
@@ -167,10 +170,10 @@ class PolarsRayCluster:
     def _wait_for_scheduler(self) -> None:
         logger.info(
             "Waiting up to %ds for the scheduler",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
         )
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 if ray.get(self._scheduler_actor.is_ready.remote(), timeout=remaining):
@@ -180,19 +183,19 @@ class PolarsRayCluster:
                 break
             time.sleep(0.5)
 
-        msg = f"Scheduler did not start within {self.config.worker_startup_timeout}s"
+        msg = f"Scheduler did not start within {self.config.startup_timeout}s"
         raise RuntimeError(msg)
 
     def _wait_for_workers(self) -> None:
         logger.info(
             "Waiting up to %ds for %d workers",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
             len(self._worker_actors),
         )
 
         pending: dict[int, typing.Any] = dict(enumerate(self._worker_actors))
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while pending and (remaining := deadline - time.monotonic()) > 0:
             try:
                 readiness = ray.get(
@@ -217,17 +220,17 @@ class PolarsRayCluster:
         if pending:
             msg = (
                 f"Workers {[resolve_worker_name(worker_id) for worker_id in pending]} "
-                f"did not start within {self.config.worker_startup_timeout}s"
+                f"did not start within {self.config.startup_timeout}s"
             )
             raise RuntimeError(msg)
 
     def _wait_for_scaler(self) -> None:
         logger.info(
             "Waiting up to %ds for the scaler",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
         )
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 if ray.get(self._scaler_actor.is_ready.remote(), timeout=remaining):
@@ -237,7 +240,7 @@ class PolarsRayCluster:
                 break
             time.sleep(0.5)
 
-        msg = f"Scaler did not start within {self.config.worker_startup_timeout}s"
+        msg = f"Scaler did not start within {self.config.startup_timeout}s"
         raise RuntimeError(msg)
 
     # this should probably never be called directly

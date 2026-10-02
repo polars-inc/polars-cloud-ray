@@ -23,7 +23,7 @@ from polars_cloud_ray.actors.worker import (
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsSchedulerConfig
+    from polars_cloud_ray.config import PolarsRuntimeConfig, PolarsSchedulerConfig
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 
@@ -57,6 +57,10 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
 
     def __ray_shutdown__(self) -> None:
         self.stop()
+
+    @property
+    def _runtime(self) -> "PolarsRuntimeConfig":
+        return self.config_cluster.runtime
 
     def _add_worker(self, worker_id: int) -> None:
         actor_name = resolve_worker_name(worker_id)
@@ -108,13 +112,8 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
             self.scheduler_host,
         )
 
-        cmd = [
-            self.config_cluster.binary_path,
-            "service",
-            "--config-path",
-            self._config_path,
-        ]
-        env = {
+        args: list[str] = ["service", "--config-path", self._config_path]
+        env: dict[str, str] = {
             **os.environ,
             "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
             "PLC_LOG_LEVEL": self.config_cluster.log_level,
@@ -122,7 +121,7 @@ class _PolarsSchedulerActor(SubprocessRunMixin):
         }
 
         self._start(
-            cmd,
+            args,
             env,
             self.config_cluster.instance_name(resolve_scheduler_name()),
         )

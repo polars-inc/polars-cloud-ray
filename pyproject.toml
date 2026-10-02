@@ -10,7 +10,7 @@ dependencies = [
     "polars-cloud>=0.9",
     "psutil>=7.0",
     "pydantic>=2.0",
-    "ray>=2.0",
+    "ray[default]>=2.0",
     "toml>=0.10",
 ]
 

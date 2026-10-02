@@ -7,11 +7,13 @@ import urllib.request
 if typing.TYPE_CHECKING:
     import pathlib
 
+    from polars_cloud_ray.config import PolarsRuntimeConfig
+
 import ray
 
 from polars_cloud_ray.actors.runtime import SubprocessRunMixin
 from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
-from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
 
@@ -25,8 +27,8 @@ def resolve_license_server_name() -> str:
 class _PolarsLicenseServerActor(SubprocessRunMixin):
     """Binary lifecycle management; inherit this to run the binary differently."""
 
-    def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
-        self.config_service: PolarsLicenseServerRuntimeConfig = config
+    def __init__(self, config: PolarsRayLicenseServerConfig) -> None:
+        self.config_service: PolarsRayLicenseServerConfig = config
 
         self.host: str = self._host(resolve_license_server_name())
 
@@ -39,6 +41,10 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
     def __ray_shutdown__(self) -> None:
         self.stop()
 
+    @property
+    def _runtime(self) -> "PolarsRuntimeConfig":
+        return self.config_service.runtime
+
     def start(self) -> None:
         """Spawn the license server process, if not already running."""
         if self._handle is not None:
@@ -46,10 +52,11 @@ class _PolarsLicenseServerActor(SubprocessRunMixin):
 
         logger.info("Starting license server on %s", self.host)
 
-        env = {**os.environ, **self.config_service.config()}
+        args: list[str] = []
+        env: dict[str, str] = {**os.environ, **self.config_service.config()}
 
         self._start(
-            [self.config_service.binary_path],
+            args,
             env,
             self.config_service.instance_name(resolve_license_server_name()),
         )

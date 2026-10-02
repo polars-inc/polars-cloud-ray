@@ -3,11 +3,40 @@ import socket
 import typing
 
 import toml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
+
+
+def _moved_to_runtime(data: typing.Any) -> typing.Any:
+    msg: list[str] = []
+    for key in ("binary_path", "single_host_cluster"):
+        if isinstance(data, dict) and key in data:
+            msg.append(
+                f"The '{key}' parameter moved under 'PolarsSubprocessConfig.{key}'. "
+                f"Replace '{key}={data[key]!r}' with 'runtime=PolarsSubprocessConfig("
+                f"{key}={data[key]!r}, ...)', or add a "
+                f"'{toml.dumps({key: data[key]}).strip()}' under the '[runtime]' table "
+                "if you store your configuration in a TOML file."
+            )
+    if len(msg):
+        raise ValueError("\n".join(msg))
+    return data
+
+
+def _renamed_to(old: str, new: str) -> typing.Any:
+    def _validator(data: typing.Any) -> typing.Any:
+        if isinstance(data, dict) and old in data:
+            msg = (
+                f"The '{old}' parameter was renamed '{new}'. Replace "
+                f"'{old}={data[old]!r}' with '{new}={data[old]!r}', or rename the "
+                f"'{old}' key '{new}' if you store your configuration in a TOML file."
+            )
+            raise ValueError(msg)
+        return data
+
+    return model_validator(mode="before")(_validator)
 
 
 def _instance_name(*parts: str) -> str:
-    """Name the host-level resources a run context creates for one instance."""
     return "-".join(("polars-cloud-ray", *parts))
 
 
@@ -474,16 +503,11 @@ class PolarsScalingConfig(BaseModel):
         description=("Port the autoscaler HTTP server listens for requests on."),
     )
 
-    def config(self) -> dict | None:
-        # next two lines for older binaries without support for the [scaling] section
-        # will be removed later on
-        if not self.enabled:
-            return None
-
+    def config(self, scaler_host: str) -> dict:
         d: dict = {"enabled": self.enabled}
 
         if self.enabled:
-            d["rest"] = {"uri": f"http://127.0.0.1:{self.port}"}
+            d["rest"] = {"uri": f"http://{scaler_host}:{self.port}"}
 
         return d
 
@@ -491,7 +515,7 @@ class PolarsScalingConfig(BaseModel):
 class PolarsSchedulerConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # cluster configuration
+    # ray configuration
     cpus_hint: int = Field(
         default=1,
         description="Number of CPU cores requested for the scheduler actor.",
@@ -678,7 +702,7 @@ class PolarsSchedulerConfig(BaseModel):
 class PolarsWorkerConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    # cluster configuration
+    # ray configuration
     cpus_hint: int = Field(
         default=1,
         description="Number of CPU cores requested for each worker actor.",
@@ -786,35 +810,75 @@ class PolarsWorkerConfig(BaseModel):
         return d
 
 
-class PolarsRayClusterConfig(BaseModel):
+class PolarsSubprocessConfig(BaseModel):
+    """Run the binary as a subprocess of its actor, on the host."""
+
     model_config = ConfigDict(frozen=True)
 
-    # whether to resolve the absolute binary path
-    _resolve_binary_path: typing.ClassVar[bool] = True
+    runtime_type: typing.Literal["subprocess"] = "subprocess"
 
-    # cluster configuration
     binary_path: str = Field(
-        default="pc-cublet",
-        description="Path to the binary.",
+        description="Path to the binary, on the host.",
     )
     single_host_cluster: bool = Field(
         default=False,
         description=(
             "Offset each worker's ports by worker_id so multiple workers can run on "
-            "the same host without port collisions."
+            "the same host without port collisions. Ignored by the license server."
         ),
     )
-    worker_max_restarts: int = Field(
-        default=3,
-        description="Ray actor restart limit for workers (-1 = unlimited).",
+
+    @model_validator(mode="after")
+    def _absolute_binary_path(self) -> "PolarsSubprocessConfig":
+        """Convert a relative into an absolute path."""
+        object.__setattr__(
+            self, "binary_path", str(_resolve_absolute_path(self.binary_path))
+        )
+        return self
+
+    def scaler_host(self) -> str:
+        """Return the address the binary reaches the scaler HTTP server on."""
+        return "127.0.0.1"
+
+    def worker_port_offset(self, worker_id: int) -> int:
+        """Return the offset added to the ports of the worker given."""
+        return worker_id * 2 if self.single_host_cluster else 0
+
+
+# should always default to subprocess
+PolarsRuntimeConfig = typing.Annotated[
+    typing.Annotated[PolarsSubprocessConfig, Tag("subprocess")],
+    Discriminator(
+        lambda v: (
+            v.get("runtime_type", "subprocess")
+            if isinstance(v, dict)
+            else v.runtime_type
+        )
+    ),
+]
+
+
+class PolarsRayClusterConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    # runtime configuration
+    runtime: PolarsRuntimeConfig = Field(
+        default_factory=lambda: PolarsSubprocessConfig(binary_path="pc-cublet"),
+        description="How and where the scheduler and worker binaries run.",
     )
-    worker_startup_timeout: int = Field(
+
+    # ray configuration
+    startup_timeout: int = Field(
         default=30,
         description="Seconds to wait for the scheduler and workers to become ready.",
     )
     actor_response_timeout: int = Field(
         default=30,
         description="Seconds to wait for actor calls to complete before giving up.",
+    )
+    worker_max_restarts: int = Field(
+        default=3,
+        description="Ray actor restart limit for workers (-1 = unlimited).",
     )
 
     # native binary configuration
@@ -883,17 +947,12 @@ class PolarsRayClusterConfig(BaseModel):
         ),
     )
 
-    @model_validator(mode="after")
-    def _absolute_binary_path(self) -> "PolarsRayClusterConfig":
-        if self._resolve_binary_path:
-            object.__setattr__(
-                self, "binary_path", str(_resolve_absolute_path(self.binary_path))
-            )
-        return self
+    _moved_to_runtime = model_validator(mode="before")(_moved_to_runtime)
+    _renamed_startup_timeout = _renamed_to("worker_startup_timeout", "startup_timeout")
 
     def _worker_port_offset(self, worker_id: int) -> int:
         """Per-worker port offset to avoid collisions when co-located on one host."""
-        return worker_id * 2 if self.single_host_cluster else 0
+        return self.runtime.worker_port_offset(worker_id)
 
     def _port_availability(
         self,
@@ -903,7 +962,7 @@ class PolarsRayClusterConfig(BaseModel):
         check_scaler: bool,
     ) -> None:
         """Raise if needed ports are already taken (only meaningful on single-host)."""
-        if not self.single_host_cluster:
+        if not self.runtime.single_host_cluster:
             return
 
         ports: dict[str, int] = {}
@@ -966,7 +1025,7 @@ class PolarsRayClusterConfig(BaseModel):
             ),
             "observatory": self.scheduler.observatory.config(),
             "monitoring": self.monitoring.config(),
-            "scaling": self.scheduler.scaling.config(),
+            "scaling": self.scheduler.scaling.config(self.runtime.scaler_host()),
         }
 
         if self.lineage is not None and (lineage := self.lineage.config()):
@@ -1015,7 +1074,7 @@ class PolarsRayClusterConfig(BaseModel):
         return _instance_name(self.cluster_id, instance_id)
 
 
-class PolarsLicenseServerRuntimeConfig(BaseModel):
+class PolarsRayLicenseServerConfig(BaseModel):
     """Runtime configuration for a `pc-license-server` process.
 
     Distinct from `PolarsLicenseServerConfig`, which only holds the `uri` consumers (a
@@ -1025,13 +1084,20 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    # whether to resolve the absolute binary path
-    _resolve_binary_path: typing.ClassVar[bool] = True
-
     # runtime configuration
-    binary_path: str = Field(
-        default="pc-license-server",
-        description="Path to the binary.",
+    runtime: PolarsRuntimeConfig = Field(
+        default_factory=lambda: PolarsSubprocessConfig(binary_path="pc-license-server"),
+        description="How and where the license server binary runs.",
+    )
+
+    # ray configuration
+    cpus_hint: int = Field(
+        default=1,
+        description="Number of CPU cores requested for the license server actor.",
+    )
+    memory_hint: int = Field(
+        default=30000000,
+        description="Max memory, in bytes, requested for the license server actor.",
     )
     startup_timeout: int = Field(
         default=30,
@@ -1040,14 +1106,6 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
     actor_response_timeout: int = Field(
         default=30,
         description="Seconds to wait for actor calls to complete before giving up.",
-    )
-    cpus_hint: int = Field(
-        default=1,
-        description="Number of CPU cores requested for the license server actor.",
-    )
-    memory_hint: int = Field(
-        default=30000000,
-        description="Max memory, in bytes, requested for the license server actor.",
     )
 
     # native binary configuration
@@ -1082,14 +1140,7 @@ class PolarsLicenseServerRuntimeConfig(BaseModel):
         ),
     )
 
-    @model_validator(mode="after")
-    def _absolute_binary_path(self) -> "PolarsLicenseServerRuntimeConfig":
-        """Resolve `binary_path` to an absolute path, unless a subclass opts out."""
-        if self._resolve_binary_path:
-            object.__setattr__(
-                self, "binary_path", str(_resolve_absolute_path(self.binary_path))
-            )
-        return self
+    _moved_to_runtime = model_validator(mode="before")(_moved_to_runtime)
 
     def config_paths(self) -> set[pathlib.Path]:
         """Return every filesystem path the license server reads or writes."""
