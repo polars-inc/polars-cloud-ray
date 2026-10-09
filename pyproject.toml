@@ -6,8 +6,8 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
-    "polars>=1.42.1",
-    "polars-cloud>=0.9",
+    "polars>=2.0.0",
+    "polars-cloud>=0.12",
     "psutil>=7.0",
     "pydantic>=2.0",
     "ray[default]>=2.0",
