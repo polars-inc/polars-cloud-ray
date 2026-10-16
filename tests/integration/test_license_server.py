@@ -8,19 +8,19 @@ import ray
 
 from polars_cloud_ray.actors import PolarsLicenseServerActor
 from polars_cloud_ray.config import (
+    PolarsDockerConfig,
     PolarsLicenseServerConfig,
     PolarsRayLicenseServerConfig,
     PolarsSubprocessConfig,
 )
 
-from .conftest import RayClusterFactory, _free_port
+from .conftest import USE_DOCKER, RayClusterFactory, _free_port
 
 _ENV_VARS = (
-    "BINARY_PATH_LICENSE_SERVER",
+    *(() if USE_DOCKER else ("BINARY_PATH_LICENSE_SERVER",)),
     "LICENSE_PATH",
     "TLS_BUNDLE_PATH",
 )
-
 pytestmark = pytest.mark.skipif(
     not all(os.environ.get(var) for var in _ENV_VARS),
     reason=f"requires {', '.join(_ENV_VARS)} to be set",
@@ -63,15 +63,26 @@ def test_license_server_reporting(
     tmp_path: pathlib.Path,
     ray_cluster: RayClusterFactory,
 ) -> None:
+    runtime: PolarsDockerConfig | PolarsSubprocessConfig
+    if USE_DOCKER:
+        runtime = PolarsDockerConfig(
+            image=os.environ.get(
+                "CONTAINER_IMAGE_LICENSE_SERVER",
+                "polars-cloud-ray-license-server:latest",
+            ),
+        )
+    else:
+        runtime = PolarsSubprocessConfig(
+            binary_path=os.environ["BINARY_PATH_LICENSE_SERVER"],
+        )
+
     config = PolarsRayLicenseServerConfig(
-        runtime=PolarsSubprocessConfig(
-            binary_path=os.environ["BINARY_PATH_LICENSE_SERVER"]
-        ),
+        runtime=runtime,
         grpc_port=_free_port(),
         http_port=_free_port(),
         report_dir=str(tmp_path),
-        license_path=os.environ["LICENSE_PATH"],
-        tls_bundle_path=os.environ["TLS_BUNDLE_PATH"],
+        license_path=str(pathlib.Path(os.environ["LICENSE_PATH"]).resolve()),
+        tls_bundle_path=str(pathlib.Path(os.environ["TLS_BUNDLE_PATH"]).resolve()),
     )
 
     license_server = PolarsLicenseServerActor.remote(config)  # type: ignore[attr-defined]
