@@ -1,7 +1,5 @@
 import logging
 import os
-import pathlib
-import tempfile
 import typing
 
 import ray
@@ -9,7 +7,9 @@ import ray
 from polars_cloud_ray.actors.runtimes import resolve_runner
 from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
-    _raise_if_exited,
+    _remove_config,
+    _resolve_config_path,
+    _write_config,
     list_actor_names,
     resolve_actor_handles,
     terminate_actors,
@@ -23,7 +23,8 @@ from polars_cloud_ray.actors.worker import (
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsSchedulerConfig
+    import pathlib
+
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 
@@ -40,21 +41,18 @@ class PolarsSchedulerActor:
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
         self.config_cluster: PolarsRayClusterConfig = config
-        self.config_service: PolarsSchedulerConfig = config.scheduler
 
         self.num_workers: int = config.num_workers  # initial value
 
-        self._config_path: str | None = None
-        self._config_paths: set[pathlib.Path] = (
-            self.config_cluster.config_paths_scheduler()
-        )
+        name = resolve_scheduler_name()
+        self._config_path: pathlib.Path = _resolve_config_path(name)
         self._runner = resolve_runner(
             config.runtime,
-            resolve_scheduler_name(),
-            config.instance_name(resolve_scheduler_name()),
+            name,
+            config.instance_name(name),
         )
 
-        self.scheduler_host: str = self._runner.host()
+        self.scheduler_host: str = self._runner.host
 
         self.start()
         _handle_sigterm(self.stop)
@@ -89,7 +87,7 @@ class PolarsSchedulerActor:
 
     def start(self) -> None:
         """Spawn the scheduler process, if not already running."""
-        if self._runner._lock:
+        if self._runner.is_started():
             return
 
         self._runner.stop_orphans(
@@ -101,10 +99,7 @@ class PolarsSchedulerActor:
         )
 
         toml = self.config_cluster.config_scheduler(self.scheduler_host)
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write(toml)
-            self._config_path = f.name
+        _write_config(self._config_path, toml)
 
         logger.info(
             "Starting scheduler (%s observatory) on %s",
@@ -112,7 +107,7 @@ class PolarsSchedulerActor:
             self.scheduler_host,
         )
 
-        args: list[str] = ["service", "--config-path", self._config_path]
+        args: list[str] = ["service", "--config-path", str(self._config_path)]
         env: dict[str, str] = {
             **os.environ,
             "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
@@ -126,13 +121,11 @@ class PolarsSchedulerActor:
         """Terminate the scheduler process and clean up."""
         self._runner.stop()
 
-        if self._config_path is not None:
-            pathlib.Path(self._config_path).unlink()
-            self._config_path = None
+        _remove_config(self._config_path)
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
-        _raise_if_exited(resolve_scheduler_name(), self._runner.exit_code())
+        self._runner._raise_if_exited()
 
         return self._runner.is_alive() and self._runner.is_listening(
             self.config_cluster.scheduler.worker_registration_port

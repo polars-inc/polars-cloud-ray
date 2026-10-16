@@ -1,3 +1,4 @@
+import functools
 import logging
 import pathlib
 import socket
@@ -17,8 +18,7 @@ class SubprocessRunner(Runner):
 
     runtime: PolarsSubprocessConfig
 
-    _handle: subprocess.Popen[bytes] | None
-
+    @functools.cached_property
     def host(self) -> str:
         return socket.gethostbyname(socket.gethostname())
 
@@ -30,11 +30,7 @@ class SubprocessRunner(Runner):
         if self._handle is not None:
             logger.info("Stopping %s (%d)", self.name, self._handle.pid)
             self._handle.terminate()
-            try:
-                self._handle.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self._handle.kill()
-                self._handle.wait()
+            self._wait_or_kill()
         self._handle = None
 
     def stop_orphans(self, cluster_id: str, ports: list[int]) -> None:
@@ -87,18 +83,12 @@ class SubprocessRunner(Runner):
                 process.kill()
                 process.wait()
 
-    def is_alive(self) -> bool:
-        return self._handle is not None and self._handle.poll() is None
-
     def is_listening(self, port: int) -> bool:
         try:
-            with socket.create_connection((self.host(), port), timeout=0.5):
+            with socket.create_connection((self.host, port), timeout=0.5):
                 return True
         except OSError:
             return False
 
-    def exit_code(self) -> int | None:
-        return self._handle.poll() if self._handle is not None else None
-
     def pid(self) -> int | None:
-        return self._handle.pid if self._handle is not None else None
+        return None if self._handle is None else self._handle.pid

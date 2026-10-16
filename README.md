@@ -47,7 +47,7 @@ Pull the Polars On-Prem binary locally (available versions are listed on our
 remember its local path:
 
 ```sh
-wget https://cdn.onprem.pola.rs/polars-on-premises-<VERSION>-linux-x64
+wget https://cdn.onprem.pola.rs/polars-on-premises-0.9.0-linux-x64
 ```
 
 Spawn a local multinode cluster:

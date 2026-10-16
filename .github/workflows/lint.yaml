@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 5
+    timeout-minutes: 1
     steps:
       # https://github.com/marketplace/actions/checkout
       - name: Check out codebase
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    timeout-minutes: 10
+    timeout-minutes: 1
     steps:
       # https://github.com/marketplace/actions/checkout
       - name: Check out codebase

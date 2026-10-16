@@ -27,7 +27,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    timeout-minutes: 15
+    timeout-minutes: 2
     steps:
       # https://github.com/marketplace/actions/checkout
       - name: Check out codebase
@@ -75,7 +75,7 @@ jobs:
 
       # https://github.com/marketplace/actions/pypi-publish
       - name: Publish to PyPI
-        if: ${{ inputs.dry-run == false }}
+        if: ${{ !inputs.dry-run }}
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
         with:
           skip-existing: true

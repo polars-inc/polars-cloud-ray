@@ -1,5 +1,9 @@
 import logging
+import pathlib
+import secrets
+import shutil
 import signal
+import tempfile
 import typing
 
 import ray
@@ -8,6 +12,23 @@ from ray.util.state import list_actors
 from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_config_path(instance_id: str) -> pathlib.Path:
+    return pathlib.Path(
+        tempfile.gettempdir(),
+        f"{instance_id}-{secrets.token_hex(8)}",
+        "config.toml",
+    )
+
+
+def _write_config(config_path: pathlib.Path, config: str) -> None:
+    config_path.parent.mkdir(mode=0o700)
+    config_path.write_text(config)
+
+
+def _remove_config(config_path: pathlib.Path) -> None:
+    shutil.rmtree(config_path.parent, ignore_errors=True)
 
 
 def _handle_sigterm(func: typing.Callable[[], None]) -> None:
@@ -21,20 +42,6 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
                 previous_handler(signum, frame)  # type: ignore[arg-type]
 
     signal.signal(signal.SIGTERM, _handler)
-
-
-def _raise_if_exited(name: str, exit_code: int | None) -> None:
-    # nothing restarts the underlying binary, so waiting for it is pointless
-    if exit_code is None:
-        return
-
-    reason = (
-        f"was killed by signal {-exit_code}"
-        if exit_code < 0
-        else f"exited with code {exit_code}"
-    )
-    msg = f"{name} {reason}, see the actor logs for its output"
-    raise RuntimeError(msg)
 
 
 def list_actor_names(cluster_id: str, prefix: str) -> set[str]:

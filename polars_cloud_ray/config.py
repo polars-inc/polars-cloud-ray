@@ -6,36 +6,6 @@ import toml
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 
-def _moved_to_runtime(data: typing.Any) -> typing.Any:
-    msg: list[str] = []
-    for key in ("binary_path", "single_host_cluster"):
-        if isinstance(data, dict) and key in data:
-            msg.append(
-                f"The '{key}' parameter moved under 'PolarsSubprocessConfig.{key}'. "
-                f"Replace '{key}={data[key]!r}' with 'runtime=PolarsSubprocessConfig("
-                f"{key}={data[key]!r}, ...)', or add a "
-                f"'{toml.dumps({key: data[key]}).strip()}' under the '[runtime]' table "
-                "if you store your configuration in a TOML file."
-            )
-    if len(msg):
-        raise ValueError("\n".join(msg))
-    return data
-
-
-def _renamed_to(old: str, new: str) -> typing.Any:
-    def _validator(data: typing.Any) -> typing.Any:
-        if isinstance(data, dict) and old in data:
-            msg = (
-                f"The '{old}' parameter was renamed '{new}'. Replace "
-                f"'{old}={data[old]!r}' with '{new}={data[old]!r}', or rename the "
-                f"'{old}' key '{new}' if you store your configuration in a TOML file."
-            )
-            raise ValueError(msg)
-        return data
-
-    return model_validator(mode="before")(_validator)
-
-
 def _instance_name(*parts: str) -> str:
     return "-".join(("polars-cloud-ray", *parts))
 
@@ -817,6 +787,9 @@ class PolarsSubprocessConfig(BaseModel):
 
     runtime_type: typing.Literal["subprocess"] = "subprocess"
 
+    # address the scheduler reaches the scaler HTTP server on
+    scaler_host: typing.ClassVar[str] = "127.0.0.1"
+
     binary_path: str = Field(
         description="Path to the binary, on the host.",
     )
@@ -836,11 +809,7 @@ class PolarsSubprocessConfig(BaseModel):
         )
         return self
 
-    def scaler_host(self) -> str:
-        """Return the address the binary reaches the scaler HTTP server on."""
-        return "127.0.0.1"
-
-    def worker_port_offset(self, worker_id: int) -> int:
+    def _worker_port_offset(self, worker_id: int) -> int:
         """Return the offset added to the ports of the worker given."""
         return worker_id * 2 if self.single_host_cluster else 0
 
@@ -886,8 +855,10 @@ class PolarsRayClusterConfig(BaseModel):
         default="polars-onprem",
         description=(
             "Unique identifier for the Polars cluster, used to identify it in a "
-            "multi-tenant environment. Also used as the Ray actor namespace."
+            "multi-tenant environment. Also used as the Ray actor namespace, hence "
+            "the alphanumerical constraint (`/` would cause issues down the line)."
         ),
+        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$",
     )
     num_workers: int = Field(
         default=0,
@@ -947,12 +918,9 @@ class PolarsRayClusterConfig(BaseModel):
         ),
     )
 
-    _moved_to_runtime = model_validator(mode="before")(_moved_to_runtime)
-    _renamed_startup_timeout = _renamed_to("worker_startup_timeout", "startup_timeout")
-
     def _worker_port_offset(self, worker_id: int) -> int:
         """Per-worker port offset to avoid collisions when co-located on one host."""
-        return self.runtime.worker_port_offset(worker_id)
+        return self.runtime._worker_port_offset(worker_id)
 
     def _port_availability(
         self,
@@ -1025,7 +993,7 @@ class PolarsRayClusterConfig(BaseModel):
             ),
             "observatory": self.scheduler.observatory.config(),
             "monitoring": self.monitoring.config(),
-            "scaling": self.scheduler.scaling.config(self.runtime.scaler_host()),
+            "scaling": self.scheduler.scaling.config(self.runtime.scaler_host),
         }
 
         if self.lineage is not None and (lineage := self.lineage.config()):
@@ -1139,8 +1107,6 @@ class PolarsRayLicenseServerConfig(BaseModel):
             "single-writer deployment; see the binary's own flag documentation."
         ),
     )
-
-    _moved_to_runtime = model_validator(mode="before")(_moved_to_runtime)
 
     def config_paths(self) -> set[pathlib.Path]:
         """Return every filesystem path the license server reads or writes."""

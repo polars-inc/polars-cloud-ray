@@ -1,16 +1,12 @@
 import logging
 import os
-import typing
 import urllib.error
 import urllib.request
-
-if typing.TYPE_CHECKING:
-    import pathlib
 
 import ray
 
 from polars_cloud_ray.actors.runtimes import resolve_runner
-from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
+from polars_cloud_ray.actors.utils import _handle_sigterm
 from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
@@ -29,14 +25,14 @@ class PolarsLicenseServerActor:
     def __init__(self, config: PolarsRayLicenseServerConfig) -> None:
         self.config_service: PolarsRayLicenseServerConfig = config
 
-        self._config_paths: set[pathlib.Path] = self.config_service.config_paths()
+        name = resolve_license_server_name()
         self._runner = resolve_runner(
             config.runtime,
-            resolve_license_server_name(),
-            config.instance_name(resolve_license_server_name()),
+            name,
+            config.instance_name(name),
         )
 
-        self.host: str = self._runner.host()
+        self.host: str = self._runner.host
 
         self.start()
         _handle_sigterm(self.stop)
@@ -46,7 +42,7 @@ class PolarsLicenseServerActor:
 
     def start(self) -> None:
         """Spawn the license server process, if not already running."""
-        if self._runner._lock:
+        if self._runner.is_started():
             return
 
         logger.info("Starting license server on %s", self.host)
@@ -62,7 +58,7 @@ class PolarsLicenseServerActor:
 
     def is_ready(self) -> bool:
         """Return whether the gRPC TLS listener is bound and serving."""
-        _raise_if_exited(resolve_license_server_name(), self._runner.exit_code())
+        self._runner._raise_if_exited()
 
         if not self._runner.is_alive():
             return False
@@ -82,7 +78,9 @@ class PolarsLicenseServerActor:
 
     def get_bind_addr(self) -> str:
         """Return the address of the gRPC service pc-cublet registers/pings against."""
-        return f"https://{self.host}:{self.config_service.grpc_port}"
+        host = self.host
+        port = self.config_service.grpc_port
+        return f"https://{host}:{port}"
 
     def get_metrics_addr(self) -> str:
         """Return the URL Prometheus gauges can be scraped from."""

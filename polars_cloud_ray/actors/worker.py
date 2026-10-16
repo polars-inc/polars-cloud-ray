@@ -1,18 +1,22 @@
 import logging
 import os
-import pathlib
 import re
-import tempfile
 import typing
 
 import ray
 
 from polars_cloud_ray.actors.runtimes import resolve_runner
-from polars_cloud_ray.actors.utils import _handle_sigterm, _raise_if_exited
+from polars_cloud_ray.actors.utils import (
+    _handle_sigterm,
+    _remove_config,
+    _resolve_config_path,
+    _write_config,
+)
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
-    from polars_cloud_ray.config import PolarsWorkerConfig
+    import pathlib
+
 
 WORKER_NAME_PREFIX = "worker"
 
@@ -38,23 +42,19 @@ class PolarsWorkerActor:
         scheduler_host: str,
     ) -> None:
         self.config_cluster: PolarsRayClusterConfig = config
-        self.config_service: PolarsWorkerConfig = config.worker
 
         self.worker_id = worker_id
         self.worker_name: str = resolve_worker_name(worker_id)
         self.scheduler_host = scheduler_host
 
-        self._config_path: str | None = None
-        self._config_paths: set[pathlib.Path] = (
-            self.config_cluster.config_paths_worker()
-        )
+        self._config_path: pathlib.Path = _resolve_config_path(self.worker_name)
         self._runner = resolve_runner(
             config.runtime,
             self.worker_name,
             config.instance_name(self.worker_name),
         )
 
-        self.worker_host: str = self._runner.host()
+        self.worker_host: str = self._runner.host
 
         self.start()
         _handle_sigterm(self.stop)
@@ -64,7 +64,7 @@ class PolarsWorkerActor:
 
     def start(self) -> None:
         """Spawn the worker process, if not already running."""
-        if self._runner._lock:
+        if self._runner.is_started():
             return
 
         offset = self.config_cluster._worker_port_offset(self.worker_id)
@@ -82,14 +82,11 @@ class PolarsWorkerActor:
             self.worker_host,
             self.scheduler_host,
         )
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write(toml)
-            self._config_path = f.name
+        _write_config(self._config_path, toml)
 
         logger.info("Starting %s on %s", self.worker_name, self.worker_host)
 
-        args: list[str] = ["service", "--config-path", self._config_path]
+        args: list[str] = ["service", "--config-path", str(self._config_path)]
         env: dict[str, str] = {
             **os.environ,
             "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
@@ -104,13 +101,11 @@ class PolarsWorkerActor:
         """Terminate the worker process and clean up."""
         self._runner.stop()
 
-        if self._config_path is not None:
-            pathlib.Path(self._config_path).unlink()
-            self._config_path = None
+        _remove_config(self._config_path)
 
     def is_ready(self) -> bool:
         """Return whether the worker process is alive and listening for tasks."""
-        _raise_if_exited(self.worker_name, self._runner.exit_code())
+        self._runner._raise_if_exited()
 
         return self._runner.is_alive() and self._runner.is_listening(
             self.config_cluster.worker.task_port
