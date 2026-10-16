@@ -1,95 +1,37 @@
 import logging
-import os
 import pathlib
+import secrets
+import shutil
 import signal
-import socket
-import subprocess
+import tempfile
 import typing
 
-import psutil
 import ray
-import toml
 from ray.actor import ActorHandle
 from ray.util.state import list_actors
 from ray.util.state.common import RAY_MAX_LIMIT_FROM_API_SERVER
 
-logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-def _resolve_host() -> str:
-    return socket.gethostbyname(socket.gethostname())
+def _resolve_config_path(instance_id: str) -> pathlib.Path:
+    return pathlib.Path(
+        tempfile.gettempdir(),
+        f"{instance_id}-{secrets.token_hex(8)}",
+        "config.toml",
+    )
 
 
-def _stop(process: subprocess.Popen | None, label: str) -> None:
-    if process is not None:
-        logger.info("Stopping %s (%d)", label, process.pid)
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+def _write_config(config_path: pathlib.Path, config: str) -> None:
+    config_path.parent.mkdir(mode=0o700)
+    config_path.write_text(config)
 
 
-def _stop_orphans(
-    binary_path: str,
-    cluster_id: str,
-    instance_id: str,
-    ports: list[int],
-) -> None:
-    """Terminate a leftover process from a previous crashed instance."""
-    for process in psutil.process_iter():
-        try:
-            port = next(
-                (
-                    conn.laddr.port
-                    for conn in process.net_connections(kind="tcp")
-                    if conn.status == psutil.CONN_LISTEN and conn.laddr.port in ports
-                ),
-                None,
-            )
-            if port is None:
-                continue
-            cmdline = process.cmdline()
-        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-            continue
-
-        msg = f"Port {port} is already in use by process ID {process.pid} "
-
-        if cmdline[0] != binary_path:
-            msg += "which does not look like one of our own processes."
-            raise RuntimeError(msg)
-
-        try:
-            stale_config = toml.loads(pathlib.Path(cmdline[3]).read_text())
-        except (IndexError, OSError) as exc:
-            msg += "but we cannot confirm if it is a stale instance."
-            raise RuntimeError(msg) from exc
-
-        if stale_config.get("cluster_id") != cluster_id:
-            msg += f"by a different cluster ('{stale_config.get('cluster_id')}')."
-            raise RuntimeError(msg)
-
-        if stale_config.get("instance_id") != instance_id:
-            msg += f"by a different instance ('{stale_config.get('instance_id')}')."
-            raise RuntimeError(msg)
-
-        logger.warning(
-            "Cleaning orphan '%s' process left over from a previous crash",
-            instance_id,
-        )
-
-        process.terminate()
-        try:
-            process.wait(timeout=10)
-        except psutil.TimeoutExpired:
-            process.kill()
-            process.wait()
+def _remove_config(config_path: pathlib.Path) -> None:
+    shutil.rmtree(config_path.parent, ignore_errors=True)
 
 
 def _handle_sigterm(func: typing.Callable[[], None]) -> None:
-    """Call function on `SIGTERM` call; then hand off to Ray's handler."""
     previous_handler = signal.getsignal(signal.SIGTERM)
 
     def _handler(signum: int, frame: object) -> None:
@@ -100,20 +42,6 @@ def _handle_sigterm(func: typing.Callable[[], None]) -> None:
                 previous_handler(signum, frame)  # type: ignore[arg-type]
 
     signal.signal(signal.SIGTERM, _handler)
-
-
-def _is_ready(
-    process: subprocess.Popen | None,
-    host: str,
-    port: int,
-) -> bool:
-    if process is None or process.poll() is not None:
-        return False
-    try:
-        with socket.create_connection((host, port), timeout=0.5):
-            return True
-    except OSError:
-        return False
 
 
 def list_actor_names(cluster_id: str, prefix: str) -> set[str]:

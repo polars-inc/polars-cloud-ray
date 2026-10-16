@@ -47,7 +47,7 @@ Pull the Polars On-Prem binary locally (available versions are listed on our
 remember its local path:
 
 ```sh
-wget https://cdn.onprem.pola.rs/polars-on-premises-<VERSION>-linux-x64
+wget https://cdn.onprem.pola.rs/polars-on-premises-0.9.0-linux-x64
 ```
 
 Spawn a local multinode cluster:
@@ -63,13 +63,16 @@ from polars_cloud_ray.config import (
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
     PolarsServiceAccountLicenseConfig,
+    PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
 
 config = PolarsRayClusterConfig(
-    binary_path="/path/to/binary",
+    runtime=PolarsSubprocessConfig(
+        binary_path="/path/to/binary",
+        single_host_cluster=True,
+    ),
     num_workers=4,
-    single_host_cluster=True,
     license=PolarsServiceAccountLicenseConfig(
         workspace_id="<WORKSPACE_ID>",
         client_id="<SERVICE_ACCOUNT_ID>",
@@ -106,14 +109,17 @@ from polars_cloud_ray.config import (
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
     PolarsServiceAccountLicenseConfig,
+    PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
 from polars_cloud_ray.context import RayClusterContext
 
 config = PolarsRayClusterConfig(
-    binary_path="/path/to/binary",
+    runtime=PolarsSubprocessConfig(
+        binary_path="/path/to/binary",
+        single_host_cluster=True,
+    ),
     num_workers=4,
-    single_host_cluster=True,
     license=PolarsServiceAccountLicenseConfig(
         workspace_id="<WORKSPACE_ID>",
         client_id="<SERVICE_ACCOUNT_ID>",
@@ -137,9 +143,8 @@ with RayClusterContext(config) as ctx:
 ray.shutdown()
 ```
 
-In case Ray is running on a single host, set the `single_host_cluster`
-configuration attribute to `True` to offset worker ports and avoid socket
-collisions.
+In case Ray is running on a single host, set the `single_host_cluster` attribute
+of `PolarsSubprocessConfig` to `True` to offset worker ports and avoid socket collisions.
 
 The actors are running in `detached` mode and survive past the script: one can
 reconnect with the same `ray.init()` and `cluster` gymnastics from another
@@ -184,10 +189,10 @@ The HTTP server is unauthenticated and binds `127.0.0.1`. It accepts only
 
 ## License server
 
-`PolarsLicenseServer` manages a `pc-license-server` process, Polars On-Prem's
-offline license server: clusters point their configuration at it via
+`PolarsRayLicenseServer` manages the Polars On-Prem offline license server
+binary as a Ray actor. Ray clusters point their configuration at it via
 `PolarsLicenseServerConfig(uri=...)` and it validates them locally, tracking
-usage into signed reports it periodically emits (and optionally uploads to the
+usage into signed reports it periodically emits (and optionally uploads to our
 control plane).
 
 It is standalone: unlike the scheduler/worker/scaler, it is not wired into
@@ -199,17 +204,21 @@ cluster that points at it.
 ```py
 import ray
 
-from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
-from polars_cloud_ray.license_server import PolarsLicenseServer
+from polars_cloud_ray.config import (
+    PolarsRayLicenseServerConfig,
+    PolarsSubprocessConfig,
+)
+from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
-config = PolarsLicenseServerRuntimeConfig(
+config = PolarsRayLicenseServerConfig(
+    runtime=PolarsSubprocessConfig(binary_path="/path/to/binary"),
     report_dir="/var/log/polars/license-server",
     license_path="/etc/polars/license.json",
     tls_bundle_path="/etc/polars/tls-bundle.pem",
 )
 
 ray.init(address="auto", namespace="license-server")
-license_server = PolarsLicenseServer(config)
+license_server = PolarsRayLicenseServer(config)
 license_server.start()
 ```
 
@@ -223,7 +232,7 @@ license = PolarsLicenseServerConfig(uri=license_server.get_bind_addr())
 
 To reconnect to (or stop) an already-running license server from another
 process, call `ray.init()` with the same namespace it was started under, then
-`PolarsLicenseServer(config).start()` (reconnects) or `.stop()`.
+`PolarsRayLicenseServer(config).start()` (reconnects) or `.stop()`.
 
 ## Resource requests and limits
 

@@ -1,13 +1,13 @@
 import logging
 import os
-import subprocess
 import urllib.error
 import urllib.request
 
 import ray
 
-from polars_cloud_ray.actors.utils import _handle_sigterm, _resolve_host, _stop
-from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.actors.runtimes import resolve_runner
+from polars_cloud_ray.actors.utils import _handle_sigterm
+from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
 
@@ -22,12 +22,17 @@ def resolve_license_server_name() -> str:
 class PolarsLicenseServerActor:
     """The air-gapped offline license validation and reporting service."""
 
-    def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
-        self.config: PolarsLicenseServerRuntimeConfig = config
+    def __init__(self, config: PolarsRayLicenseServerConfig) -> None:
+        self.config_service: PolarsRayLicenseServerConfig = config
 
-        self.host: str = _resolve_host()
+        name = resolve_license_server_name()
+        self._runner = resolve_runner(
+            config.runtime,
+            name,
+            config.instance_name(name),
+        )
 
-        self._process: subprocess.Popen | None = None
+        self.host: str = self._runner.host
 
         self.start()
         _handle_sigterm(self.stop)
@@ -37,28 +42,30 @@ class PolarsLicenseServerActor:
 
     def start(self) -> None:
         """Spawn the license server process, if not already running."""
-        if self._process is not None:
+        if self._runner.is_started():
             return
 
         logger.info("Starting license server on %s", self.host)
 
-        env = {**os.environ, **self.config.env()}
+        args: list[str] = []
+        env: dict[str, str] = {**os.environ, **self.config_service.config()}
 
-        self._process = subprocess.Popen([self.config.binary_path], env=env)
-        logger.info("License server process ID: %d", self._process.pid)
+        self._runner.start(args, env)
 
     def stop(self) -> None:
         """Terminate the license server process."""
-        _stop(self._process, resolve_license_server_name())
-        self._process = None
+        self._runner.stop()
 
     def is_ready(self) -> bool:
         """Return whether the gRPC TLS listener is bound and serving."""
-        if self._process is None or self._process.poll() is not None:
+        self._runner._raise_if_exited()
+
+        if not self._runner.is_alive():
             return False
+
         try:
             with urllib.request.urlopen(
-                f"http://127.0.0.1:{self.config.http_port}/readyz",
+                f"http://127.0.0.1:{self.config_service.http_port}/readyz",
                 timeout=0.5,
             ) as response:
                 return response.status == 200
@@ -71,12 +78,14 @@ class PolarsLicenseServerActor:
 
     def get_bind_addr(self) -> str:
         """Return the address of the gRPC service pc-cublet registers/pings against."""
-        return f"https://{self.host}:{self.config.grpc_port}"
+        host = self.host
+        port = self.config_service.grpc_port
+        return f"https://{host}:{port}"
 
     def get_metrics_addr(self) -> str:
         """Return the URL Prometheus gauges can be scraped from."""
-        return f"http://{self.host}:{self.config.http_port}/metrics"
+        return f"http://{self.host}:{self.config_service.http_port}/metrics"
 
     def get_license_server_pid(self) -> int | None:
         """Return the OS process ID of the license server binary subprocess."""
-        return self._process.pid if self._process is not None else None
+        return self._runner.pid()

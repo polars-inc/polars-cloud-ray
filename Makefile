@@ -28,5 +28,5 @@ test-license-server: .venv
 	 pytest --verbose tests/integration/test_license_server.py
 
 clean:
-	@rm -fr .pytest_cache .ropeproject .ruff_cache uv.lock .venv
+	@rm -fr .mypy_cache .pytest_cache .ropeproject .ruff_cache uv.lock .venv
 	@rm -fr $$(find . -name __pycache__)

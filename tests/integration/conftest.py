@@ -21,6 +21,7 @@ from polars_cloud_ray.config import (
     PolarsRayClusterConfig,
     PolarsScalingConfig,
     PolarsSchedulerConfig,
+    PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
 from polars_cloud_ray.context import RayClusterContext
@@ -141,7 +142,6 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         *,
         # cluster configuration
         worker_max_restarts: int = 3,
-        worker_memory_limit: int | None = None,
         # native binary configuration
         scaling_enabled: bool = False,
         num_workers: int = 0,
@@ -156,8 +156,10 @@ def ray_cluster_config() -> RayClusterConfigFactory:
 
         return PolarsRayClusterConfig(
             # cluster configuration
-            binary_path=binary_path,
-            single_host_cluster=True,
+            runtime=PolarsSubprocessConfig(
+                binary_path=binary_path,
+                single_host_cluster=True,
+            ),
             worker_max_restarts=worker_max_restarts,
             # native binary configuration
             cluster_id=cluster_id,
@@ -187,7 +189,6 @@ def ray_cluster_config() -> RayClusterConfigFactory:
                 memory_hint=1,
                 # native binary configuration
                 cpu_reserved=1,
-                memory_limit=worker_memory_limit,
                 task_port=_free_port_range(),
                 shuffle_port=_free_port_range(),
             ),

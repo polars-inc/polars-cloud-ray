@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 import typing
 
@@ -20,7 +19,6 @@ from polars_cloud_ray.actors import (
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
 
-logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
@@ -38,11 +36,15 @@ class PolarsRayCluster:
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
         PolarsServiceAccountLicenseConfig,
+        PolarsSubprocessConfig,
         PolarsWorkerConfig,
     )
 
     config = PolarsRayClusterConfig(
-        # single_host_cluster=True,
+        runtime=PolarsSubprocessConfig(
+            binary_path="/path/to/binary",
+            # single_host_cluster=True,
+        ),
         num_workers=4,
         license=PolarsServiceAccountLicenseConfig(
             workspace_id="<WORKSPACE_ID>",
@@ -165,10 +167,10 @@ class PolarsRayCluster:
     def _wait_for_scheduler(self) -> None:
         logger.info(
             "Waiting up to %ds for the scheduler",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
         )
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 if ray.get(self._scheduler_actor.is_ready.remote(), timeout=remaining):
@@ -178,19 +180,19 @@ class PolarsRayCluster:
                 break
             time.sleep(0.5)
 
-        msg = f"Scheduler did not start within {self.config.worker_startup_timeout}s"
+        msg = f"Scheduler did not start within {self.config.startup_timeout}s"
         raise RuntimeError(msg)
 
     def _wait_for_workers(self) -> None:
         logger.info(
             "Waiting up to %ds for %d workers",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
             len(self._worker_actors),
         )
 
         pending: dict[int, typing.Any] = dict(enumerate(self._worker_actors))
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while pending and (remaining := deadline - time.monotonic()) > 0:
             try:
                 readiness = ray.get(
@@ -215,17 +217,17 @@ class PolarsRayCluster:
         if pending:
             msg = (
                 f"Workers {[resolve_worker_name(worker_id) for worker_id in pending]} "
-                f"did not start within {self.config.worker_startup_timeout}s"
+                f"did not start within {self.config.startup_timeout}s"
             )
             raise RuntimeError(msg)
 
     def _wait_for_scaler(self) -> None:
         logger.info(
             "Waiting up to %ds for the scaler",
-            self.config.worker_startup_timeout,
+            self.config.startup_timeout,
         )
 
-        deadline = time.monotonic() + self.config.worker_startup_timeout
+        deadline = time.monotonic() + self.config.startup_timeout
         while (remaining := deadline - time.monotonic()) > 0:
             try:
                 if ray.get(self._scaler_actor.is_ready.remote(), timeout=remaining):
@@ -235,7 +237,7 @@ class PolarsRayCluster:
                 break
             time.sleep(0.5)
 
-        msg = f"Scaler did not start within {self.config.worker_startup_timeout}s"
+        msg = f"Scaler did not start within {self.config.startup_timeout}s"
         raise RuntimeError(msg)
 
     # this should probably never be called directly

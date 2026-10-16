@@ -1,17 +1,15 @@
 import logging
 import os
-import pathlib
-import subprocess
-import tempfile
+import typing
 
 import ray
 
+from polars_cloud_ray.actors.runtimes import resolve_runner
 from polars_cloud_ray.actors.utils import (
     _handle_sigterm,
-    _is_ready,
-    _resolve_host,
-    _stop,
-    _stop_orphans,
+    _remove_config,
+    _resolve_config_path,
+    _write_config,
     list_actor_names,
     resolve_actor_handles,
     terminate_actors,
@@ -23,6 +21,10 @@ from polars_cloud_ray.actors.worker import (
     resolve_worker_name,
 )
 from polars_cloud_ray.config import PolarsRayClusterConfig
+
+if typing.TYPE_CHECKING:
+    import pathlib
+
 
 SCHEDULER_NAME_PREFIX = "scheduler"
 
@@ -38,13 +40,19 @@ class PolarsSchedulerActor:
     """The central service, distributing tasks and piloting autoscaling."""
 
     def __init__(self, config: PolarsRayClusterConfig) -> None:
-        self.config: PolarsRayClusterConfig = config
+        self.config_cluster: PolarsRayClusterConfig = config
 
-        self.scheduler_host: str = _resolve_host()
         self.num_workers: int = config.num_workers  # initial value
 
-        self._config_path: str | None = None
-        self._process: subprocess.Popen | None = None
+        name = resolve_scheduler_name()
+        self._config_path: pathlib.Path = _resolve_config_path(name)
+        self._runner = resolve_runner(
+            config.runtime,
+            name,
+            config.instance_name(name),
+        )
+
+        self.scheduler_host: str = self._runner.host
 
         self.start()
         _handle_sigterm(self.stop)
@@ -57,75 +65,70 @@ class PolarsSchedulerActor:
 
         PolarsWorkerActor.options(  # type: ignore[attr-defined]
             name=actor_name,
-            namespace=self.config.cluster_id,
+            namespace=self.config_cluster.cluster_id,
             lifetime="detached",
-            max_restarts=self.config.worker_max_restarts,
-            num_cpus=self.config.worker.cpus_hint,
-            memory=self.config.worker.memory_hint,
-        ).remote(self.config, worker_id, self.scheduler_host)
+            max_restarts=self.config_cluster.worker_max_restarts,
+            num_cpus=self.config_cluster.worker.cpus_hint,
+            memory=self.config_cluster.worker.memory_hint,
+        ).remote(self.config_cluster, worker_id, self.scheduler_host)
 
         logger.info("Requested new worker %s", actor_name)
 
     def _remove_workers(self, worker_actor_names: set[str]) -> None:
-        actors = resolve_actor_handles(worker_actor_names, self.config.cluster_id)
-        terminate_actors(list(actors.values()), self.config.actor_response_timeout)
+        actors = resolve_actor_handles(
+            worker_actor_names, self.config_cluster.cluster_id
+        )
+        terminate_actors(
+            list(actors.values()), self.config_cluster.actor_response_timeout
+        )
 
         for actor_name in worker_actor_names:
             logger.info("Removed worker %s", actor_name)
 
     def start(self) -> None:
         """Spawn the scheduler process, if not already running."""
-        if self._process is not None:
+        if self._runner.is_started():
             return
 
-        _stop_orphans(
-            self.config.binary_path,
-            self.config.cluster_id,
-            resolve_scheduler_name(),
+        self._runner.stop_orphans(
+            self.config_cluster.cluster_id,
             [
-                self.config.scheduler.worker_registration_port,
-                self.config.scheduler.client_port,
+                self.config_cluster.scheduler.worker_registration_port,
+                self.config_cluster.scheduler.client_port,
             ],
         )
 
-        toml = self.config.config_scheduler(self.scheduler_host)
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
-            f.write(toml)
-            self._config_path = f.name
+        toml = self.config_cluster.config_scheduler(self.scheduler_host)
+        _write_config(self._config_path, toml)
 
         logger.info(
             "Starting scheduler (%s observatory) on %s",
-            "and" if self.config.scheduler.observatory.enabled else "without",
+            "and" if self.config_cluster.scheduler.observatory.enabled else "without",
             self.scheduler_host,
         )
 
-        cmd = [self.config.binary_path, "service", "--config-path", self._config_path]
-        env = {
+        args: list[str] = ["service", "--config-path", str(self._config_path)]
+        env: dict[str, str] = {
             **os.environ,
-            "POLARS_EULA_ACCEPTED": "yes" if self.config.accept_eula else "no",
-            "PLC_LOG_LEVEL": self.config.log_level,
-            "RUST_BACKTRACE": self.config.rust_backtrace,
+            "POLARS_EULA_ACCEPTED": "yes" if self.config_cluster.accept_eula else "no",
+            "PLC_LOG_LEVEL": self.config_cluster.log_level,
+            "RUST_BACKTRACE": self.config_cluster.rust_backtrace,
         }
 
-        self._process = subprocess.Popen(cmd, env=env)
-        logger.info("Scheduler process ID: %d", self._process.pid)
+        self._runner.start(args, env)
 
     def stop(self) -> None:
         """Terminate the scheduler process and clean up."""
-        _stop(self._process, resolve_scheduler_name())
-        self._process = None
+        self._runner.stop()
 
-        if self._config_path is not None:
-            pathlib.Path(self._config_path).unlink()
-            self._config_path = None
+        _remove_config(self._config_path)
 
     def is_ready(self) -> bool:
         """Return whether the scheduler process is alive and accepting registration."""
-        return _is_ready(
-            self._process,
-            self.scheduler_host,
-            self.config.scheduler.worker_registration_port,
+        self._runner._raise_if_exited()
+
+        return self._runner.is_alive() and self._runner.is_listening(
+            self.config_cluster.scheduler.worker_registration_port
         )
 
     def get_host(self) -> str:
@@ -134,27 +137,29 @@ class PolarsSchedulerActor:
 
     def get_client_addr(self) -> str:
         """Return the URI queries should be submitted to."""
-        return f"{self.scheduler_host}:{self.config.scheduler.client_port}"
+        return f"{self.scheduler_host}:{self.config_cluster.scheduler.client_port}"
 
     def get_dashboard_addr(self) -> str | None:
         """Return the observatory dashboard URL."""
         return (
-            f"http://{self.scheduler_host}:{self.config.scheduler.observatory.rest_port}"
-            if self.config.scheduler.observatory.enabled
+            f"http://{self.scheduler_host}:{self.config_cluster.scheduler.observatory.rest_port}"
+            if self.config_cluster.scheduler.observatory.enabled
             else None
         )
 
     def get_scheduler_pid(self) -> int | None:
         """Return the OS process ID of the scheduler binary subprocess."""
-        return self._process.pid if self._process is not None else None
+        return self._runner.pid()
 
     def get_scaling_status(self) -> dict[str, int | set[str] | None]:
         """Return the current/desired worker counts and configured bounds."""
         return {
-            "available": list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX),
+            "available": list_actor_names(
+                self.config_cluster.cluster_id, WORKER_NAME_PREFIX
+            ),
             "desired": self.num_workers,
-            "min": self.config.min_workers,
-            "max": self.config.max_workers,
+            "min": self.config_cluster.min_workers,
+            "max": self.config_cluster.max_workers,
         }
 
     def rescale_worker_pool_to(
@@ -180,8 +185,8 @@ class PolarsSchedulerActor:
             ignored.
 
         """
-        min_workers = self.config.min_workers
-        max_workers = self.config.max_workers
+        min_workers = self.config_cluster.min_workers
+        max_workers = self.config_cluster.max_workers
         clamped = max(min_workers, num_workers)
 
         if max_workers is not None:
@@ -197,7 +202,9 @@ class PolarsSchedulerActor:
             )
             num_workers = clamped
 
-        worker_names = list_actor_names(self.config.cluster_id, WORKER_NAME_PREFIX)
+        worker_names = list_actor_names(
+            self.config_cluster.cluster_id, WORKER_NAME_PREFIX
+        )
 
         _delete = (delete or set()) & worker_names or None
         _keep = (keep or set()) & worker_names or None

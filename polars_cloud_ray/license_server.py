@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 import typing
 
@@ -11,29 +10,28 @@ from polars_cloud_ray.actors import (
     resolve_license_server_name,
     terminate_actors,
 )
-from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
+from polars_cloud_ray.config import PolarsRayLicenseServerConfig
 
-logging.basicConfig(level=os.getenv("LOGLEVEL", "INFO").upper())
 logger = logging.getLogger(__name__)
 
 
-class PolarsLicenseServer:
+class PolarsRayLicenseServer:
     """Manage the lifecycle of the standalone license server actor.
 
     ```py
     import ray
 
-    from polars_cloud_ray.config import PolarsLicenseServerRuntimeConfig
-    from polars_cloud_ray.license_server import PolarsLicenseServer
+    from polars_cloud_ray.config import PolarsRayLicenseServerConfig
+    from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
-    config = PolarsLicenseServerRuntimeConfig(
+    config = PolarsRayLicenseServerConfig(
         report_dir="/var/log/polars/license-server",
         license_path="/etc/polars/license.json",
         tls_bundle_path="/etc/polars/tls-bundle.pem",
     )
 
     ray.init(address="auto", namespace="polars-onprem-license-server")
-    license_server = PolarsLicenseServer(config)
+    license_server = PolarsRayLicenseServer(config)
     license_server.start()
 
     print(license_server.get_bind_addr())
@@ -43,7 +41,7 @@ class PolarsLicenseServer:
     ```
     """
 
-    def __init__(self, config: PolarsLicenseServerRuntimeConfig) -> None:
+    def __init__(self, config: PolarsRayLicenseServerConfig) -> None:
         self.config = config
 
         self._actor: typing.Any = None

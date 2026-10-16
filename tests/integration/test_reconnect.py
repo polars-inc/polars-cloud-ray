@@ -28,7 +28,7 @@ def test_reconnect_existing_cluster(
     ]
     result0 = run_query(cluster=cluster0)
 
-    ray.shutdown()  # simulates the driver process exiting (cluster stays up)
+    ray.shutdown()  # simulates the calling process exiting (cluster stays up)
 
     ray.init(address="auto", namespace=config.cluster_id, ignore_reinit_error=True)
     cluster1 = PolarsRayCluster(config)
