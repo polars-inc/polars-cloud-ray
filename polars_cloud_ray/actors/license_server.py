@@ -30,6 +30,11 @@ class PolarsLicenseServerActor:
             config.runtime,
             name,
             config.instance_name(name),
+            cpus=config.cpus_hint,
+            memory=config.memory_hint,
+            mounts_rw=config.config_paths_rw(),
+            mounts_ro=config.config_paths_ro(),
+            ports=config.config_ports(),
         )
 
         self.host: str = self._runner.host
@@ -84,7 +89,9 @@ class PolarsLicenseServerActor:
 
     def get_metrics_addr(self) -> str:
         """Return the URL Prometheus gauges can be scraped from."""
-        return f"http://{self.host}:{self.config_service.http_port}/metrics"
+        host = self.config_service.runtime.scheduler_host or self.host
+        port = self.config_service.http_port
+        return f"http://{host}:{port}/metrics"
 
     def get_license_server_pid(self) -> int | None:
         """Return the OS process ID of the license server binary subprocess."""

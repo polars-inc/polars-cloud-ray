@@ -10,6 +10,7 @@ from polars_cloud_ray.actors import (
 from polars_cloud_ray.cluster import PolarsRayCluster
 from polars_cloud_ray.config import (
     PolarsCheckpointConfig,
+    PolarsDockerConfig,
     PolarsEnterpriseLicenseConfig,
     PolarsLicenseConfig,
     PolarsLicenseServerConfig,
@@ -30,6 +31,7 @@ from polars_cloud_ray.license_server import PolarsRayLicenseServer
 
 __all__ = [
     "PolarsCheckpointConfig",
+    "PolarsDockerConfig",
     "PolarsEnterpriseLicenseConfig",
     "PolarsLicenseConfig",
     "PolarsLicenseServerActor",

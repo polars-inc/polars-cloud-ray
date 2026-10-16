@@ -52,6 +52,10 @@ class PolarsWorkerActor:
             config.runtime,
             self.worker_name,
             config.instance_name(self.worker_name),
+            cpus=config.worker.cpus_hint,
+            memory=config.worker.memory_hint,
+            mounts_rw=config.config_paths_rw_worker(),
+            mounts_ro={self._config_path.parent, *config.config_paths_ro()},
         )
 
         self.worker_host: str = self._runner.host

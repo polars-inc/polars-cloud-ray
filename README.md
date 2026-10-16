@@ -172,7 +172,8 @@ and only enforced on rescaling, where a `POST /scale_to` count outside them is
 clamped.
 Requesting more workers is done via the client: `.distributed(min_workers=X)`.
 
-The HTTP server is unauthenticated and binds `127.0.0.1`. It accepts only
+The HTTP server is unauthenticated and binds `127.0.0.1`, or the Docker network
+gateway when the binaries run in containers. It accepts only
 `application/json` bodies, and ignores worker names that are not worker actors.
 
 > [!NOTE]
@@ -239,13 +240,15 @@ process, call `ray.init()` with the same namespace it was started under, then
 Four parameters control resource usage:
 
 - `cpus_hint` / `memory_hint`: forwarded verbatim as Ray's own `num_cpus` /
-  `memory` actor options, and used by Ray for bin-packing only; not enforced at
-  the OS level.
+  `memory` actor options, and used by Ray for bin-packing. Not enforced at the
+  OS level for subprocesses, but enforced as `--cpus` / `--memory` for
+  containers (see [Running in containers](#running-in-containers)).
 - `cpu_reserved`: a scheduling/accounting hint consumed internally by the binary
   for task placement and reported to the observatory; never enforced.
 - `memory_limit`: enforced by the binary itself via cgroups; but only if a
-  _delegated cgroup subtree is made available_ (_e.g._, inside a container or a
-  scoped `systemd-run`).
+  _delegated cgroup subtree is made available_. The containers started by this
+  package mount cgroups read-only, so there `memory_hint` is the limit that
+  applies.
 
 A plain session/SSH shell does not provide one (everything lives flatly in one
 cgroup), so `memory_limit` fails outright with the following message:
@@ -253,10 +256,45 @@ cgroup), so `memory_limit` fails outright with the following message:
 > Ensure cgroup is mounted and subgroups are delegated, or disable the memory
 > limit in the configuration file.
 
-### What "enforced" actually means
+## Running in containers
 
-Hitting `memory.max` does not by itself kill a process: the kernel attempts
-direct reclaim and retries, and only resorts to the OOM killer once reclaim
-genuinely cannot free anything more.
-In practice this usually means throttling to a crawl rather than a hard
-failure.
+The binaries can run in Docker containers rather than as subprocesses of the
+actors, for two reasons:
+
+- Resource enforcement: `cpus_hint` / `memory_hint` are passed to Docker as
+  `--cpus` / `--memory`, which it enforces, whereas a plain session or SSH shell
+  gives the binary no delegated cgroup subtree for its own `memory_limit`.
+- Running the binary where it is not native: the binary is released for Linux
+  only.
+
+Container images including the binaries still need to be built. Minimal
+examples are provided in the `docker/` folder, and a recipe in the `Makefile`:
+
+```sh
+make image POLARS_VERSION=<x.x.x> BINARY_PATH=/path/to/binary
+```
+
+> [!NOTE]
+> `POLARS_VERSION` matters: the binary imports Polars through an embedded
+> interpreter and refuses to start when the versions disagree, with a bare
+> `AssertionError` out of `polars/_plr.py`. It is a property of the binary, not
+> of this package dependency pinning.
+
+Then select the container runtime, naming that image:
+
+```py
+from polars_cloud_ray.config import PolarsDockerConfig, PolarsRayClusterConfig
+
+config = PolarsRayClusterConfig(
+    runtime=PolarsDockerConfig(image="polars-cloud-ray:latest"),  # Makefile tag
+    ...
+)
+```
+
+Everything else, `PolarsRayCluster` and `RayClusterContext` included, remains
+identical. `single_host_cluster` does not apply: each container has its own
+network namespace, so worker ports never collide.
+
+The license server runs the same way, from its own image built with
+`make image-license-server`. Clusters then reach it by container name, so they
+have to run in containers on the same Docker network.

@@ -56,6 +56,11 @@ class Runner(abc.ABC):
             self._handle.kill()
             self._handle.wait()
 
+    @classmethod
+    def gateway_addr(cls, runtime: typing.Any) -> str:  # noqa: ARG003
+        """Return the address the scaler binds for the scheduler to reach it."""
+        return "127.0.0.1"
+
     @property
     @abc.abstractmethod
     def host(self) -> str:

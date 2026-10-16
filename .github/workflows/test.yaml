@@ -32,9 +32,19 @@ defaults:
 
 jobs:
   integration:
+    name: integration (${{ matrix.runtime }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # no docker run on github's macos runners: ray only ships arm64 wheels for
+        # macos, and the arm64 runners lack the nested virtualization docker needs
+        # running our docker tests under linux, better than nothing
+        runtime:
+          - docker
+          - subprocess
     timeout-minutes: 15
     steps:
       # https://github.com/marketplace/actions/checkout
@@ -72,9 +82,17 @@ jobs:
           source .venv/bin/activate
           uv pip install pytest-github-actions-annotate-failures
 
+      - name: Build the image
+        if: ${{ matrix.runtime == 'docker' }}
+        run: |
+          source .venv/bin/activate
+          make image POLARS_VERSION=$(python -c "import polars; print(polars.__version__)")
+
       - name: Run integration tests
         run: |
-          make test
+          make "test-$RUNTIME"
+        env:
+          RUNTIME: ${{ matrix.runtime }}
         timeout-minutes: 10
 
   integration-license-server:

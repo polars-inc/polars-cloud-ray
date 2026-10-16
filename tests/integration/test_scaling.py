@@ -1,4 +1,5 @@
 import json
+import subprocess
 import time
 import urllib.request
 
@@ -7,11 +8,12 @@ import ray
 
 from polars_cloud_ray.actors import (
     SCALER_NAME_PREFIX,
+    SCHEDULER_NAME_PREFIX,
     WORKER_NAME_PREFIX,
     list_actor_names,
 )
 
-from .conftest import RayClusterFactory, TestQuery
+from .conftest import USE_DOCKER, RayClusterFactory, TestQuery
 
 
 def _wait_for_workers(
@@ -119,10 +121,31 @@ def test_scale_config(
         max_workers=max_workers,
     )
 
-    with urllib.request.urlopen(
-        f"http://127.0.0.1:{cluster.config.scheduler.scaling.port}/scale_config"
-    ) as response:
-        body = json.loads(response.read())
+    host = cluster.config.runtime.scaler_host
+    port = cluster.config.scheduler.scaling.port
+    url = f"http://{host}:{port}/scale_config"
+
+    if USE_DOCKER:
+        body = json.loads(
+            subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    cluster.config.instance_name(SCHEDULER_NAME_PREFIX),
+                    "python",
+                    "-c",
+                    "import sys, urllib.request; "
+                    "print(urllib.request.urlopen(sys.argv[1]).read().decode())",
+                    url,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout
+        )
+    else:
+        with urllib.request.urlopen(url) as response:
+            body = json.loads(response.read())
 
     assert body["desired"] == 1
     assert body["available"] == 1
