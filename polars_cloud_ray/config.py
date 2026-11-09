@@ -520,7 +520,9 @@ class PolarsSchedulerConfig(BaseModel):
         default=None,
         description=(
             "Memory limit, in bytes, enforced by our binary via cgroups. Requires a "
-            "delegated cgroup subtree, which only container runtimes provide."
+            "delegated cgroup subtree, which a plain shell session does not provide. "
+            "The containers of the Docker runtime mount cgroups read-only, so there "
+            "`memory_hint` is the limit that applies instead."
         ),
     )
 
@@ -707,7 +709,9 @@ class PolarsWorkerConfig(BaseModel):
         default=None,
         description=(
             "Memory limit, in bytes, enforced by our binary via cgroups. Requires a "
-            "delegated cgroup subtree, which only container runtimes provide."
+            "delegated cgroup subtree, which a plain shell session does not provide. "
+            "The containers of the Docker runtime mount cgroups read-only, so there "
+            "`memory_hint` is the limit that applies instead."
         ),
     )
 
