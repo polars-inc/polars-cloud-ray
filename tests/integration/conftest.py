@@ -168,7 +168,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
             )
         else:
             runtime = PolarsSubprocessConfig(
-                binary_path=os.environ.get("BINARY_PATH", "./pc-cublet"),
+                binary_path=os.environ.get("BINARY_PATH"),
                 single_host_cluster=True,
             )
 

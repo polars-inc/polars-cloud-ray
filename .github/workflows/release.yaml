@@ -42,7 +42,7 @@ jobs:
           # deliberately uncached: whatever lands in `dist/` gets published
           enable-cache: false
           # lowest supported version
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Check the version matches the tag
         run: |
@@ -67,7 +67,7 @@ jobs:
       - name: Test the artifacts
         run: |
           for f in dist/*.tar.gz dist/*.whl; do
-            uv venv --python=3.10 /tmp/smoke-test
+            uv venv --python=3.11 /tmp/smoke-test
             VIRTUAL_ENV=/tmp/smoke-test uv pip install --reinstall "$f"
             /tmp/smoke-test/bin/python -c 'import polars_cloud_ray'
             rm -fr /tmp/smoke-test

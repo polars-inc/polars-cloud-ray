@@ -1,8 +1,11 @@
 import functools
 import logging
 import pathlib
+import shutil
 import socket
 import subprocess
+import sys
+import sysconfig
 
 import psutil
 import toml
@@ -12,6 +15,23 @@ from polars_cloud_ray.config import PolarsSubprocessConfig
 
 logger = logging.getLogger(__name__)
 
+COMPUTE_SCRIPT = "polars-nanook-compute"
+
+
+def _resolve_compute_script() -> str:
+    """Return the path to the console script of the `polars-nanook-compute` package."""
+    path = shutil.which(COMPUTE_SCRIPT, path=sysconfig.get_path("scripts")) or (
+        shutil.which(COMPUTE_SCRIPT)
+    )
+    if path is None:
+        msg = (
+            f"Cannot find the '{COMPUTE_SCRIPT}' script, which the package of the "
+            "same name installs on Linux only; set 'binary_path', or use the Docker "
+            "runtime."
+        )
+        raise RuntimeError(msg)
+    return path
+
 
 class SubprocessRunner(Runner):
     """Run the binary as a subprocess of the actor, as a system process on the host."""
@@ -19,11 +39,22 @@ class SubprocessRunner(Runner):
     runtime: PolarsSubprocessConfig
 
     @functools.cached_property
+    def command(self) -> list[str]:
+        """Return the command line launching the binary, before its arguments."""
+        # the script, as workers re-run sys.argv[0] to spawn their executors; through
+        # sys.executable, for stop_orphans to match the command line it launched
+        return (
+            [sys.executable, _resolve_compute_script()]
+            if self.runtime.binary_path is None
+            else [self.runtime.binary_path]
+        )
+
+    @functools.cached_property
     def host(self) -> str:
         return socket.gethostbyname(socket.gethostname())
 
     def start(self, args: list[str], env: dict[str, str]) -> None:
-        self._handle = subprocess.Popen([self.runtime.binary_path, *args], env=env)
+        self._handle = subprocess.Popen([*self.command, *args], env=env)
         logger.info("Process ID of %s: %d", self.name, self._handle.pid)
 
     def stop(self) -> None:
@@ -53,12 +84,14 @@ class SubprocessRunner(Runner):
 
             msg = f"Port {port} is already in use by process ID {process.pid} "
 
-            if cmdline[0] != self.runtime.binary_path:
+            if cmdline[: len(self.command)] != self.command:
                 msg += "which does not look like one of our own processes."
                 raise RuntimeError(msg)
 
             try:
-                stale_config = toml.loads(pathlib.Path(cmdline[3]).read_text())
+                stale_config = toml.loads(
+                    pathlib.Path(cmdline[len(self.command) + 2]).read_text()
+                )
             except (IndexError, OSError) as exc:
                 msg += "but we cannot confirm if it is a stale instance."
                 raise RuntimeError(msg) from exc

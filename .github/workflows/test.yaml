@@ -7,18 +7,18 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      pc-cublet-version:
-        description: Version of the Polars On-Prem binary to test against
+      compute-version:
+        description: Version of the polars-nanook-compute package to test against
         required: false
         type: string
-      pc-license-server-version:
+      license-server-version:
         description: Version of the Polars License Server binary to test against
         required: false
         type: string
 
 env:
-  PC_CUBLET_VERSION: ${{ inputs.pc-cublet-version || '0.9.0' }}
-  PC_LICENSE_SERVER_VERSION: ${{ inputs.pc-license-server-version || '0.1.1' }}
+  COMPUTE_VERSION: ${{ inputs.compute-version }}
+  LICENSE_SERVER_VERSION: ${{ inputs.license-server-version || '0.1.1' }}
 
 concurrency:
   cancel-in-progress: true
@@ -63,12 +63,6 @@ jobs:
           prune-cache: false
           python-version: "3.12"
 
-      - name: Download the binary
-        run: |
-          mkdir --parents _bin
-          wget --no-verbose https://cdn.onprem.pola.rs/polars-on-premises-$PC_CUBLET_VERSION-linux-x64 --output-document=_bin/pc-cublet
-          chmod +x _bin/pc-cublet
-
       - name: Materialize the license
         run: |
           mkdir --parents _etc
@@ -81,12 +75,15 @@ jobs:
           make .venv
           source .venv/bin/activate
           uv pip install pytest-github-actions-annotate-failures
+          if [[ -n "$COMPUTE_VERSION" ]]; then
+            uv pip install "polars-nanook-compute==$COMPUTE_VERSION"
+          fi
 
       - name: Build the image
         if: ${{ matrix.runtime == 'docker' }}
         run: |
           source .venv/bin/activate
-          make image POLARS_VERSION=$(python -c "import polars; print(polars.__version__)")
+          make image COMPUTE_VERSION=$(python -c "import importlib.metadata; print(importlib.metadata.version('polars-nanook-compute'))")
 
       - name: Run integration tests
         run: |
@@ -117,12 +114,11 @@ jobs:
           prune-cache: false
           python-version: "3.12"
 
-      - name: Download the binaries
+      - name: Download the license server binary
         run: |
           mkdir --parents _bin
-          wget --no-verbose https://cdn.onprem.pola.rs/polars-on-premises-$PC_CUBLET_VERSION-linux-x64 --output-document=_bin/pc-cublet
-          wget --no-verbose https://cdn.onprem.pola.rs/license-server-$PC_LICENSE_SERVER_VERSION-linux-x64 --output-document=_bin/pc-license-server
-          chmod +x _bin/pc-*
+          wget --no-verbose https://cdn.onprem.pola.rs/polars-nanook-license-server-$LICENSE_SERVER_VERSION-linux-x64 --output-document=_bin/polars-nanook-license-server
+          chmod +x _bin/polars-nanook-license-server
 
       - name: Materialize the license and TLS bundle
         run: |
@@ -138,6 +134,9 @@ jobs:
           make .venv
           source .venv/bin/activate
           uv pip install pytest-github-actions-annotate-failures
+          if [[ -n "$COMPUTE_VERSION" ]]; then
+            uv pip install "polars-nanook-compute==$COMPUTE_VERSION"
+          fi
 
       - name: Run license server tests (5 mins idling time)
         run: |
