@@ -6,7 +6,7 @@ import pytest
 import ray
 from ray.exceptions import ActorUnavailableError
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     SCHEDULER_NAME_PREFIX,
     WORKER_NAME_PREFIX,
     PolarsWorkerActor,

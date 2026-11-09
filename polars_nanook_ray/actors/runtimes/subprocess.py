@@ -10,8 +10,8 @@ import sysconfig
 import psutil
 import toml
 
-from polars_cloud_ray.actors.runtimes.base import Runner
-from polars_cloud_ray.config import PolarsSubprocessConfig
+from polars_nanook_ray.actors.runtimes.base import Runner
+from polars_nanook_ray.config import PolarsSubprocessConfig
 
 logger = logging.getLogger(__name__)
 

@@ -5,9 +5,9 @@ import urllib.request
 
 import ray
 
-from polars_cloud_ray.actors.runtimes import resolve_runner
-from polars_cloud_ray.actors.utils import _handle_sigterm
-from polars_cloud_ray.config import PolarsRayLicenseServerConfig
+from polars_nanook_ray.actors.runtimes import resolve_runner
+from polars_nanook_ray.actors.utils import _handle_sigterm
+from polars_nanook_ray.config import PolarsRayLicenseServerConfig
 
 LICENSE_SERVER_NAME_PREFIX = "license-server"
 
@@ -82,7 +82,7 @@ class PolarsLicenseServerActor:
         return self.host
 
     def get_bind_addr(self) -> str:
-        """Return the address of the gRPC service pc-cublet registers/pings against."""
+        """Return the gRPC address the scheduler and workers register with."""
         host = self.host
         port = self.config_service.grpc_port
         return f"https://{host}:{port}"

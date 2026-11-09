@@ -1,14 +1,14 @@
 import logging
 import os
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     PolarsLicenseServerActor,
     PolarsScalerActor,
     PolarsSchedulerActor,
     PolarsWorkerActor,
 )
-from polars_cloud_ray.cluster import PolarsRayCluster
-from polars_cloud_ray.config import (
+from polars_nanook_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.config import (
     PolarsCheckpointConfig,
     PolarsDockerConfig,
     PolarsEnterpriseLicenseConfig,
@@ -26,8 +26,8 @@ from polars_cloud_ray.config import (
     PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
-from polars_cloud_ray.context import RayClusterContext
-from polars_cloud_ray.license_server import PolarsRayLicenseServer
+from polars_nanook_ray.context import RayClusterContext
+from polars_nanook_ray.license_server import PolarsRayLicenseServer
 
 __all__ = [
     "PolarsCheckpointConfig",

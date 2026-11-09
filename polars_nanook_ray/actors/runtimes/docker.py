@@ -8,8 +8,8 @@ import socket
 import subprocess
 import time
 
-from polars_cloud_ray.actors.runtimes.base import Runner
-from polars_cloud_ray.config import PolarsDockerConfig, _resolve_absolute_path
+from polars_nanook_ray.actors.runtimes.base import Runner
+from polars_nanook_ray.config import PolarsDockerConfig, _resolve_absolute_path
 
 logger = logging.getLogger(__name__)
 

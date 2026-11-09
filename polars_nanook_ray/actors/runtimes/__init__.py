@@ -2,10 +2,10 @@ import typing
 
 from pydantic import BaseModel
 
-from polars_cloud_ray.actors.runtimes.base import Runner
-from polars_cloud_ray.actors.runtimes.docker import DockerRunner
-from polars_cloud_ray.actors.runtimes.subprocess import SubprocessRunner
-from polars_cloud_ray.config import (
+from polars_nanook_ray.actors.runtimes.base import Runner
+from polars_nanook_ray.actors.runtimes.docker import DockerRunner
+from polars_nanook_ray.actors.runtimes.subprocess import SubprocessRunner
+from polars_nanook_ray.config import (
     PolarsDockerConfig,
     PolarsRuntimeConfig,
     PolarsSubprocessConfig,
@@ -24,7 +24,7 @@ def resolve_runner_class(runtime: PolarsRuntimeConfig) -> type[Runner]:
     except KeyError:
         msg = (
             f"No runner registered for the '{type(runtime).__name__}' runtime; "
-            "add one to 'polars_cloud_ray.actors.runtimes.RUNNERS'."
+            "add one to 'polars_nanook_ray.actors.runtimes.RUNNERS'."
         )
         raise ValueError(msg) from None
 

@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: release
-      url: https://pypi.org/project/polars-cloud-ray
+      url: https://pypi.org/project/polars-nanook-ray
     permissions:
       contents: read
       id-token: write
@@ -69,7 +69,7 @@ jobs:
           for f in dist/*.tar.gz dist/*.whl; do
             uv venv --python=3.11 /tmp/smoke-test
             VIRTUAL_ENV=/tmp/smoke-test uv pip install --reinstall "$f"
-            /tmp/smoke-test/bin/python -c 'import polars_cloud_ray'
+            /tmp/smoke-test/bin/python -c 'import polars_nanook_ray'
             rm -fr /tmp/smoke-test
           done
 

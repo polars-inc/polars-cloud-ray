@@ -1,25 +1,25 @@
-# Polars On-Prem over Ray
+# Polars Nanook over Ray
 
-Runs the Polars On-Prem scheduler and workers as [Ray](https://www.ray.io/) actors.
+Runs the Polars Nanook scheduler and workers as [Ray](https://www.ray.io/) actors.
 
 ## Quickstart
 
 Prerequisites for a completely local test deployment:
 
-- A Polars On-Prem `license.json` file, or a valid service account
+- A Polars Nanook `license.json` file, or a valid service account
 - A Python virtual environment:
 
 ```sh
 uv venv
 source .venv/bin/activate
-uv pip install polars-cloud-ray
+uv pip install polars-nanook-ray
 ```
 
 It will also install `ray`, and `polars-nanook-compute` which runs the scheduler
 and workers, as dependencies. The latter pins the Polars version of the
 environment, and is only installed on Linux, the only platform it is released
 for; elsewhere, run the scheduler and workers [in containers](#running-in-containers).
-Note that a few things need to be set up for the Polars On-Prem cluster to
+Note that a few things need to be set up for the Polars Nanook cluster to
 function properly:
 
 ```sh
@@ -39,18 +39,18 @@ ray start \
   --resources='{"head":1}' # pinning
 ```
 
-If you do not already have one, create a Polars service account through the
-[cloud portal](https://cloud.pola.rs/api/redirects/register).
+If you do not already have one, create a Polars Nanook service account through the
+[Polars Nanook portal](https://nanook.pola.rs/api/redirects/register).
 
 Spawn a local multinode cluster:
 
 ```py
 import polars as pl
-import polars_cloud as pc
+import polars_nanook as pn
 import ray
 
-from polars_cloud_ray.cluster import PolarsRayCluster
-from polars_cloud_ray.config import (
+from polars_nanook_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.config import (
     PolarsObservatoryConfig,
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
@@ -78,7 +78,7 @@ cluster.start()
 print(
     pl.LazyFrame({"a": [1, 2, 3], "b": [4, 4, 5]})
     .with_columns(pl.col("a").max().over("b").alias("c"))
-    .remote(pc.ClusterContext(uri=f"http://{cluster.get_client_addr()}"))
+    .remote(pn.ClusterContext(uri=f"http://{cluster.get_client_addr()}"))
     .execute()
     .head
 )
@@ -93,7 +93,7 @@ or:
 import polars as pl
 import ray
 
-from polars_cloud_ray.config import (
+from polars_nanook_ray.config import (
     PolarsObservatoryConfig,
     PolarsRayClusterConfig,
     PolarsSchedulerConfig,
@@ -101,7 +101,7 @@ from polars_cloud_ray.config import (
     PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
-from polars_cloud_ray.context import RayClusterContext
+from polars_nanook_ray.context import RayClusterContext
 
 config = PolarsRayClusterConfig(
     runtime=PolarsSubprocessConfig(single_host_cluster=True),
@@ -176,7 +176,7 @@ gateway when the binaries run in containers. It accepts only
 
 ## License server
 
-`PolarsRayLicenseServer` manages the Polars On-Prem offline license server
+`PolarsRayLicenseServer` manages the Polars Nanook offline license server
 binary as a Ray actor. Ray clusters point their configuration at it via
 `PolarsLicenseServerConfig(uri=...)` and it validates them locally, tracking
 usage into signed reports it periodically emits (and optionally uploads to our
@@ -191,11 +191,11 @@ cluster that points at it.
 ```py
 import ray
 
-from polars_cloud_ray.config import (
+from polars_nanook_ray.config import (
     PolarsRayLicenseServerConfig,
     PolarsSubprocessConfig,
 )
-from polars_cloud_ray.license_server import PolarsRayLicenseServer
+from polars_nanook_ray.license_server import PolarsRayLicenseServer
 
 config = PolarsRayLicenseServerConfig(
     runtime=PolarsSubprocessConfig(binary_path="/path/to/binary"),
@@ -212,7 +212,7 @@ license_server.start()
 A cluster then validates against it with:
 
 ```py
-from polars_cloud_ray.config import PolarsLicenseServerConfig
+from polars_nanook_ray.config import PolarsLicenseServerConfig
 
 license = PolarsLicenseServerConfig(uri=license_server.get_bind_addr())
 ```
@@ -268,10 +268,10 @@ make image COMPUTE_VERSION=<x.x.x> PYTHON_VERSION=<x.y>
 Then select the container runtime, naming that image:
 
 ```py
-from polars_cloud_ray.config import PolarsDockerConfig, PolarsRayClusterConfig
+from polars_nanook_ray.config import PolarsDockerConfig, PolarsRayClusterConfig
 
 config = PolarsRayClusterConfig(
-    runtime=PolarsDockerConfig(image="polars-cloud-ray:latest"),  # Makefile tag
+    runtime=PolarsDockerConfig(image="polars-nanook-ray:latest"),  # Makefile tag
     ...
 )
 ```

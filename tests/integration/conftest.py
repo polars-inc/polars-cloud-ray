@@ -8,12 +8,12 @@ import typing
 import uuid
 
 import polars as pl
-import polars_cloud as pc
+import polars_nanook as pn
 import pytest
 import ray
 
-from polars_cloud_ray.cluster import PolarsRayCluster
-from polars_cloud_ray.config import (
+from polars_nanook_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.config import (
     PolarsDockerConfig,
     PolarsEnterpriseLicenseConfig,
     PolarsLicenseConfig,
@@ -25,7 +25,7 @@ from polars_cloud_ray.config import (
     PolarsSubprocessConfig,
     PolarsWorkerConfig,
 )
-from polars_cloud_ray.context import RayClusterContext
+from polars_nanook_ray.context import RayClusterContext
 
 RayClusterConfigFactory = typing.Callable[..., PolarsRayClusterConfig]
 RayClusterFactory = typing.Callable[..., PolarsRayCluster]
@@ -155,7 +155,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         worker_cpus_hint: int = 1 if USE_DOCKER else 0,
         worker_memory_hint: int = 512 * 1024**2 if USE_DOCKER else 1,
     ) -> PolarsRayClusterConfig:
-        cluster_id = f"polars-onprem-{uuid.uuid4().hex[:8]}"
+        cluster_id = f"polars-nanook-{uuid.uuid4().hex[:8]}"
 
         license_path = str(
             pathlib.Path(os.environ.get("LICENSE_PATH", "./license.json")).resolve()
@@ -164,7 +164,7 @@ def ray_cluster_config() -> RayClusterConfigFactory:
         runtime: PolarsDockerConfig | PolarsSubprocessConfig
         if USE_DOCKER:
             runtime = PolarsDockerConfig(
-                image=os.environ.get("CONTAINER_IMAGE", "polars-cloud-ray:latest"),
+                image=os.environ.get("CONTAINER_IMAGE", "polars-nanook-ray:latest"),
             )
         else:
             runtime = PolarsSubprocessConfig(
@@ -223,7 +223,7 @@ def run_query() -> TestQuery:
         max_workers: int | None = None,
     ) -> pl.DataFrame | None:
         if cluster is not None:
-            ctx = pc.ClusterContext(uri=f"http://{cluster.get_client_addr()}")
+            ctx = pn.ClusterContext(uri=f"http://{cluster.get_client_addr()}")
         elif context is not None:
             ctx = context
         else:

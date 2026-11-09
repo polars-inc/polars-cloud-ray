@@ -1,12 +1,12 @@
 import ray
 from polars.testing import assert_frame_equal
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     SCHEDULER_NAME_PREFIX,
     WORKER_NAME_PREFIX,
     list_actor_names,
 )
-from polars_cloud_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.cluster import PolarsRayCluster
 
 from .conftest import RayClusterConfigFactory, TestQuery
 

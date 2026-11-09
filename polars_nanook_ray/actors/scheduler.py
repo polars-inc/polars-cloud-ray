@@ -4,8 +4,8 @@ import typing
 
 import ray
 
-from polars_cloud_ray.actors.runtimes import resolve_runner
-from polars_cloud_ray.actors.utils import (
+from polars_nanook_ray.actors.runtimes import resolve_runner
+from polars_nanook_ray.actors.utils import (
     _handle_sigterm,
     _remove_config,
     _resolve_config_path,
@@ -14,13 +14,13 @@ from polars_cloud_ray.actors.utils import (
     resolve_actor_handles,
     terminate_actors,
 )
-from polars_cloud_ray.actors.worker import (
+from polars_nanook_ray.actors.worker import (
     WORKER_NAME_PREFIX,
     PolarsWorkerActor,
     _resolve_worker_name_regex,
     resolve_worker_name,
 )
-from polars_cloud_ray.config import PolarsRayClusterConfig
+from polars_nanook_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
     import pathlib

@@ -5,12 +5,12 @@ import typing
 import ray
 from ray.exceptions import GetTimeoutError
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     PolarsLicenseServerActor,
     resolve_license_server_name,
     terminate_actors,
 )
-from polars_cloud_ray.config import PolarsRayLicenseServerConfig
+from polars_nanook_ray.config import PolarsRayLicenseServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ class PolarsRayLicenseServer:
     ```py
     import ray
 
-    from polars_cloud_ray.config import PolarsRayLicenseServerConfig
-    from polars_cloud_ray.license_server import PolarsRayLicenseServer
+    from polars_nanook_ray.config import PolarsRayLicenseServerConfig
+    from polars_nanook_ray.license_server import PolarsRayLicenseServer
 
     config = PolarsRayLicenseServerConfig(
         report_dir="/var/log/polars/license-server",
@@ -30,7 +30,7 @@ class PolarsRayLicenseServer:
         tls_bundle_path="/etc/polars/tls-bundle.pem",
     )
 
-    ray.init(address="auto", namespace="polars-onprem-license-server")
+    ray.init(address="auto", namespace="polars-nanook-license-server")
     license_server = PolarsRayLicenseServer(config)
     license_server.start()
 
@@ -119,7 +119,7 @@ class PolarsRayLicenseServer:
         )
 
     def get_bind_addr(self) -> str:
-        """Return the address of the gRPC service pc-cublet registers/pings against."""
+        """Return the gRPC address the scheduler and workers register with."""
         if self._actor is None:
             msg = "The license server does not appear to be running."
             raise RuntimeError(msg)

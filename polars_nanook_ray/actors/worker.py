@@ -5,14 +5,14 @@ import typing
 
 import ray
 
-from polars_cloud_ray.actors.runtimes import resolve_runner
-from polars_cloud_ray.actors.utils import (
+from polars_nanook_ray.actors.runtimes import resolve_runner
+from polars_nanook_ray.actors.utils import (
     _handle_sigterm,
     _remove_config,
     _resolve_config_path,
     _write_config,
 )
-from polars_cloud_ray.config import PolarsRayClusterConfig
+from polars_nanook_ray.config import PolarsRayClusterConfig
 
 if typing.TYPE_CHECKING:
     import pathlib

@@ -5,7 +5,7 @@ import typing
 import ray
 from ray.exceptions import GetTimeoutError
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     WORKER_NAME_PREFIX,
     PolarsScalerActor,
     PolarsSchedulerActor,
@@ -17,7 +17,7 @@ from polars_cloud_ray.actors import (
     resolve_worker_name,
     terminate_actors,
 )
-from polars_cloud_ray.config import PolarsRayClusterConfig
+from polars_nanook_ray.config import PolarsRayClusterConfig
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,11 @@ class PolarsRayCluster:
 
     ```py
     import polars as pl
-    import polars_cloud as pc
+    import polars_nanook as pn
     import ray
 
-    from polars_cloud_ray.cluster import PolarsRayCluster
-    from polars_cloud_ray.config import (
+    from polars_nanook_ray.cluster import PolarsRayCluster
+    from polars_nanook_ray.config import (
         PolarsObservatoryConfig,
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
@@ -61,7 +61,7 @@ class PolarsRayCluster:
     print(
         pl.LazyFrame({"a": [1, 2, 3], "b": [4, 4, 5]})
         .with_columns(pl.col("a").max().over("b").alias("c"))
-        .remote(pc.ClusterContext(uri=f"http://{cluster.get_client_addr()}"))
+        .remote(pn.ClusterContext(uri=f"http://{cluster.get_client_addr()}"))
         .execute()
         .head
     )
