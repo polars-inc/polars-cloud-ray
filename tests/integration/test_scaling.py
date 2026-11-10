@@ -6,7 +6,7 @@ import urllib.request
 import pytest
 import ray
 
-from polars_cloud_ray.actors import (
+from polars_nanook_ray.actors import (
     SCALER_NAME_PREFIX,
     SCHEDULER_NAME_PREFIX,
     WORKER_NAME_PREFIX,

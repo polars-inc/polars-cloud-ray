@@ -1,6 +1,6 @@
 import ray
 
-from polars_cloud_ray.context import RayClusterContext
+from polars_nanook_ray.context import RayClusterContext
 
 from .conftest import RayClusterConfigFactory, TestQuery
 

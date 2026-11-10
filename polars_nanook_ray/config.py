@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_val
 
 
 def _instance_name(*parts: str) -> str:
-    return "-".join(("polars-cloud-ray", *parts))
+    return "-".join(("polars-nanook-ray", *parts))
 
 
 def _resolve_absolute_path(path: str) -> pathlib.Path:
@@ -857,7 +857,7 @@ class PolarsDockerConfig(BaseModel):
         ),
     )
     network: str = Field(
-        default="polars-cloud-ray",
+        default="polars-nanook-ray",
         description="Docker network the containers join, created if missing.",
     )
     extra_volume_mounts: list[str] = Field(
@@ -913,7 +913,7 @@ class PolarsRayClusterConfig(BaseModel):
 
     # native binary configuration
     cluster_id: str = Field(
-        default="polars-onprem",
+        default="polars-nanook",
         description=(
             "Unique identifier for the Polars cluster, used to identify it in a "
             "multi-tenant environment. Also used as the Ray actor namespace, hence "
@@ -941,9 +941,9 @@ class PolarsRayClusterConfig(BaseModel):
     accept_eula: bool = Field(
         default=False,
         description=(
-            "To run our binary with an On-Prem Enterprise license, you must accept the "
-            "EULA. If you don't accept it, our binary refuses to start and prints the "
-            "EULA instead. Sets POLARS_EULA_ACCEPTED."
+            "To run our binary with a Polars Nanook Enterprise license, you must "
+            "accept the EULA. If you don't accept it, our binary refuses to start and "
+            "prints the EULA instead. Sets POLARS_EULA_ACCEPTED."
         ),
     )
     license: PolarsLicenseConfig = Field(
@@ -1163,7 +1163,9 @@ class PolarsRayLicenseServerConfig(BaseModel):
     # native binary configuration
     grpc_port: int = Field(
         default=50051,
-        description="Port for the gRPC (TLS) service worker registers/pings against.",
+        description=(
+            "Port for the gRPC (TLS) service the scheduler and workers register with."
+        ),
     )
     http_port: int = Field(
         default=8081,

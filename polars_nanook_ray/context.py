@@ -1,16 +1,16 @@
-from polars_cloud import ClientOptions, ClusterContext
+from polars_nanook import ClientOptions, ClusterContext
 
-from polars_cloud_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.cluster import PolarsRayCluster
 
 
 class RayClusterContext(PolarsRayCluster, ClusterContext):
-    """A `PolarsRayCluster` directly usable as a `polars_cloud.ClusterContext`.
+    """A `PolarsRayCluster` directly usable as a `polars_nanook.ClusterContext`.
 
     ```py
     import polars as pl
     import ray
 
-    from polars_cloud_ray.config import (
+    from polars_nanook_ray.config import (
         PolarsObservatoryConfig,
         PolarsRayClusterConfig,
         PolarsSchedulerConfig,
@@ -18,7 +18,7 @@ class RayClusterContext(PolarsRayCluster, ClusterContext):
         PolarsSubprocessConfig,
         PolarsWorkerConfig,
     )
-    from polars_cloud_ray.context import RayClusterContext
+    from polars_nanook_ray.context import RayClusterContext
 
     config = PolarsRayClusterConfig(
         runtime=PolarsSubprocessConfig(

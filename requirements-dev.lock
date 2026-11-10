@@ -110,10 +110,8 @@ polars==2.1.0
     #   -r requirements-dev.txt
     #   polars-nanook
     #   polars-nanook-compute
-polars-cloud==0.13.0
-    # via -r requirements-dev.txt
 polars-nanook==0.13.0
-    # via polars-cloud
+    # via -r requirements-dev.txt
 polars-nanook-compute==0.10.1 ; sys_platform == 'linux'
     # via -r requirements-dev.txt
 polars-runtime-32==2.1.0

@@ -5,8 +5,8 @@ COMPUTE_VERSION?=0.10.1
 
 BINARY_PATH_LICENSE_SERVER="$(PWD)/_bin/polars-nanook-license-server"
 
-CONTAINER_IMAGE="polars-cloud-ray:latest"
-CONTAINER_IMAGE_LICENSE_SERVER="polars-cloud-ray-license-server:latest"
+CONTAINER_IMAGE="polars-nanook-ray:latest"
+CONTAINER_IMAGE_LICENSE_SERVER="polars-nanook-ray-license-server:latest"
 
 LICENSE_PATH="$(PWD)/_etc/license.json"
 TLS_BUNDLE_PATH="$(PWD)/_etc/tls-bundle.pem"

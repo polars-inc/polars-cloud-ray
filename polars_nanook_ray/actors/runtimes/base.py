@@ -2,7 +2,7 @@ import abc
 import subprocess
 import typing
 
-from polars_cloud_ray.config import PolarsRuntimeConfig
+from polars_nanook_ray.config import PolarsRuntimeConfig
 
 
 class Runner(abc.ABC):
@@ -10,7 +10,7 @@ class Runner(abc.ABC):
 
     These are the only spots an actor touches what it launched and how it can be
     accessed; each runtime should implement them all, and get an entry in the
-    `polars_cloud_ray.actors.runtimes.RUNNERS` dict.
+    `polars_nanook_ray.actors.runtimes.RUNNERS` dict.
     """
 
     def __init__(

@@ -1,7 +1,7 @@
 [project]
-name = "polars-cloud-ray"
+name = "polars-nanook-ray"
 version = "0.2.0"
-description = "Polars On-Prem over Ray"
+description = "Polars Nanook over Ray"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
@@ -21,11 +21,11 @@ dev = ["pytest>=9.1"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-# copy-pasted from polars-cloud
+# copy-pasted from polars-nanook
 
 [tool.mypy]
 files = [
-    "$MYPY_CONFIG_FILE_DIR/polars_cloud_ray",
+    "$MYPY_CONFIG_FILE_DIR/polars_nanook_ray",
     "$MYPY_CONFIG_FILE_DIR/tests",
 ]
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]

@@ -6,8 +6,8 @@ import time
 import pytest
 import ray
 
-from polars_cloud_ray.actors import PolarsLicenseServerActor
-from polars_cloud_ray.config import (
+from polars_nanook_ray.actors import PolarsLicenseServerActor
+from polars_nanook_ray.config import (
     PolarsDockerConfig,
     PolarsLicenseServerConfig,
     PolarsRayLicenseServerConfig,
@@ -68,7 +68,7 @@ def test_license_server_reporting(
         runtime = PolarsDockerConfig(
             image=os.environ.get(
                 "CONTAINER_IMAGE_LICENSE_SERVER",
-                "polars-cloud-ray-license-server:latest",
+                "polars-nanook-ray-license-server:latest",
             ),
         )
     else:

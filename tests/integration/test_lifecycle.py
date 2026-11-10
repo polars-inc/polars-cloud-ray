@@ -5,8 +5,8 @@ import pytest
 import ray
 from polars.testing import assert_frame_equal
 
-from polars_cloud_ray.cluster import PolarsRayCluster
-from polars_cloud_ray.config import PolarsEnterpriseLicenseConfig
+from polars_nanook_ray.cluster import PolarsRayCluster
+from polars_nanook_ray.config import PolarsEnterpriseLicenseConfig
 
 from .conftest import RayClusterConfigFactory, RayClusterFactory, TestQuery
 
