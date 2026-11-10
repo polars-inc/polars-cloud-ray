@@ -520,7 +520,9 @@ class PolarsSchedulerConfig(BaseModel):
         default=None,
         description=(
             "Memory limit, in bytes, enforced by our binary via cgroups. Requires a "
-            "delegated cgroup subtree, which only container runtimes provide."
+            "delegated cgroup subtree, which a plain shell session does not provide. "
+            "The containers of the Docker runtime mount cgroups read-only, so there "
+            "`memory_hint` is the limit that applies instead."
         ),
     )
 
@@ -707,7 +709,9 @@ class PolarsWorkerConfig(BaseModel):
         default=None,
         description=(
             "Memory limit, in bytes, enforced by our binary via cgroups. Requires a "
-            "delegated cgroup subtree, which only container runtimes provide."
+            "delegated cgroup subtree, which a plain shell session does not provide. "
+            "The containers of the Docker runtime mount cgroups read-only, so there "
+            "`memory_hint` is the limit that applies instead."
         ),
     )
 
@@ -804,8 +808,13 @@ class PolarsSubprocessConfig(BaseModel):
     # address the scheduler reaches the scaler HTTP server on
     scaler_host: typing.ClassVar[str] = "127.0.0.1"
 
-    binary_path: str = Field(
-        description="Path to the binary, on the host.",
+    binary_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to the binary, on the host. If unset, runs the "
+            "`polars-nanook-compute` package installed alongside this one; the "
+            "license server requires it."
+        ),
     )
     single_host_cluster: bool = Field(
         default=False,
@@ -818,9 +827,10 @@ class PolarsSubprocessConfig(BaseModel):
     @model_validator(mode="after")
     def _absolute_binary_path(self) -> "PolarsSubprocessConfig":
         """Convert a relative into an absolute path."""
-        object.__setattr__(
-            self, "binary_path", str(_resolve_absolute_path(self.binary_path))
-        )
+        if self.binary_path is not None:
+            object.__setattr__(
+                self, "binary_path", str(_resolve_absolute_path(self.binary_path))
+            )
         return self
 
     def _worker_port_offset(self, worker_id: int) -> int:
@@ -883,7 +893,7 @@ class PolarsRayClusterConfig(BaseModel):
 
     # runtime configuration
     runtime: PolarsRuntimeConfig = Field(
-        default_factory=lambda: PolarsSubprocessConfig(binary_path="pc-cublet"),
+        default_factory=PolarsSubprocessConfig,
         description="How and where the scheduler and worker binaries run.",
     )
 
@@ -1126,7 +1136,9 @@ class PolarsRayLicenseServerConfig(BaseModel):
 
     # runtime configuration
     runtime: PolarsRuntimeConfig = Field(
-        default_factory=lambda: PolarsSubprocessConfig(binary_path="pc-license-server"),
+        default_factory=lambda: PolarsSubprocessConfig(
+            binary_path="polars-nanook-license-server"
+        ),
         description="How and where the license server binary runs.",
     )
 
@@ -1151,9 +1163,7 @@ class PolarsRayLicenseServerConfig(BaseModel):
     # native binary configuration
     grpc_port: int = Field(
         default=50051,
-        description=(
-            "Port for the gRPC (TLS) service pc-cublet registers/pings against."
-        ),
+        description="Port for the gRPC (TLS) service worker registers/pings against.",
     )
     http_port: int = Field(
         default=8081,
@@ -1169,7 +1179,7 @@ class PolarsRayLicenseServerConfig(BaseModel):
     )
     tls_bundle_path: str = Field(
         description=(
-            "Path to the combined PEM bundle holding the license-server TLS material."
+            "Path to the combined PEM bundle holding the license server TLS material."
         ),
     )
     db_disable_file_locking: bool = Field(
@@ -1179,6 +1189,17 @@ class PolarsRayLicenseServerConfig(BaseModel):
             "single-writer deployment; see the binary's own flag documentation."
         ),
     )
+
+    @model_validator(mode="after")
+    def _binary_path_required(self) -> "PolarsRayLicenseServerConfig":
+        """Raise if the binary is missing, as no package provides it."""
+        if (
+            isinstance(self.runtime, PolarsSubprocessConfig)
+            and self.runtime.binary_path is None
+        ):
+            msg = "The license server subprocess runtime requires a binary."
+            raise ValueError(msg)
+        return self
 
     def config_paths_ro(self) -> set[pathlib.Path]:
         """Return every filesystem path the license server only reads."""

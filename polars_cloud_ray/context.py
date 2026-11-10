@@ -22,7 +22,6 @@ class RayClusterContext(PolarsRayCluster, ClusterContext):
 
     config = PolarsRayClusterConfig(
         runtime=PolarsSubprocessConfig(
-            binary_path="/path/to/binary",
             # single_host_cluster=True,
         ),
         num_workers=4,

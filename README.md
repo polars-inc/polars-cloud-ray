@@ -6,7 +6,6 @@ Runs the Polars On-Prem scheduler and workers as [Ray](https://www.ray.io/) acto
 
 Prerequisites for a completely local test deployment:
 
-- A Polars On-Prem binary accessible on the machine
 - A Polars On-Prem `license.json` file, or a valid service account
 - A Python virtual environment:
 
@@ -16,14 +15,14 @@ source .venv/bin/activate
 uv pip install polars-cloud-ray
 ```
 
-It will also install `ray` as a dependency.
+It will also install `ray`, and `polars-nanook-compute` which runs the scheduler
+and workers, as dependencies. The latter pins the Polars version of the
+environment, and is only installed on Linux, the only platform it is released
+for; elsewhere, run the scheduler and workers [in containers](#running-in-containers).
 Note that a few things need to be set up for the Polars On-Prem cluster to
 function properly:
 
 ```sh
-# path to libpython3.x.so
-export LD_LIBRARY_PATH=$(python -c "import sysconfig; print(sysconfig.get_config_var('LIBDIR'))")
-
 # need to match the config if manually changed
 mkdir --parents /tmp/polars/{anonymous-results,license,observatory,shuffle-data,temporary-data}
 ```
@@ -42,13 +41,6 @@ ray start \
 
 If you do not already have one, create a Polars service account through the
 [cloud portal](https://cloud.pola.rs/api/redirects/register).
-Pull the Polars On-Prem binary locally (available versions are listed on our
-[Releases](https://docs.cloud.pola.rs/polars-on-premises/releases/) page), and
-remember its local path:
-
-```sh
-wget https://cdn.onprem.pola.rs/polars-on-premises-0.9.0-linux-x64
-```
 
 Spawn a local multinode cluster:
 
@@ -68,10 +60,7 @@ from polars_cloud_ray.config import (
 )
 
 config = PolarsRayClusterConfig(
-    runtime=PolarsSubprocessConfig(
-        binary_path="/path/to/binary",
-        single_host_cluster=True,
-    ),
+    runtime=PolarsSubprocessConfig(single_host_cluster=True),
     num_workers=4,
     license=PolarsServiceAccountLicenseConfig(
         workspace_id="<WORKSPACE_ID>",
@@ -115,10 +104,7 @@ from polars_cloud_ray.config import (
 from polars_cloud_ray.context import RayClusterContext
 
 config = PolarsRayClusterConfig(
-    runtime=PolarsSubprocessConfig(
-        binary_path="/path/to/binary",
-        single_host_cluster=True,
-    ),
+    runtime=PolarsSubprocessConfig(single_host_cluster=True),
     num_workers=4,
     license=PolarsServiceAccountLicenseConfig(
         workspace_id="<WORKSPACE_ID>",
@@ -271,14 +257,13 @@ Container images including the binaries still need to be built. Minimal
 examples are provided in the `docker/` folder, and a recipe in the `Makefile`:
 
 ```sh
-make image POLARS_VERSION=<x.x.x> BINARY_PATH=/path/to/binary
+make image COMPUTE_VERSION=<x.x.x> PYTHON_VERSION=<x.y>
 ```
 
 > [!NOTE]
-> `POLARS_VERSION` matters: the binary imports Polars through an embedded
-> interpreter and refuses to start when the versions disagree, with a bare
-> `AssertionError` out of `polars/_plr.py`. It is a property of the binary, not
-> of this package dependency pinning.
+> Match `COMPUTE_VERSION` and `PYTHON_VERSION` to the environment the queries
+> are sent from: `polars-nanook-compute` pins the Polars version it runs, and
+> Python functions in queries are pickled for the Python version they run on.
 
 Then select the container runtime, naming that image:
 

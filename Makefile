@@ -1,10 +1,9 @@
 SHELL=/bin/bash
 
 PYTHON_VERSION?=3.12
-POLARS_VERSION?=2.0.0
+COMPUTE_VERSION?=0.10.1
 
-BINARY_PATH="$(PWD)/_bin/pc-cublet"
-BINARY_PATH_LICENSE_SERVER="$(PWD)/_bin/pc-license-server"
+BINARY_PATH_LICENSE_SERVER="$(PWD)/_bin/polars-nanook-license-server"
 
 CONTAINER_IMAGE="polars-cloud-ray:latest"
 CONTAINER_IMAGE_LICENSE_SERVER="polars-cloud-ray-license-server:latest"
@@ -19,16 +18,16 @@ TLS_BUNDLE_PATH="$(PWD)/_etc/tls-bundle.pem"
 
 image:
 	@docker buildx build \
-	  --build-arg POLARS_VERSION=$(POLARS_VERSION) \
-	  --build-context binaries=$$(dirname $(BINARY_PATH)) \
-	  --file ./docker/pc-cublet.Dockerfile \
+	  --build-arg COMPUTE_VERSION=$(COMPUTE_VERSION) \
+	  --build-arg PYTHON_VERSION=$(PYTHON_VERSION) \
+	  --file ./docker/polars-nanook-compute.Dockerfile \
 	  --tag $(CONTAINER_IMAGE) \
 	  .
 
 image-license-server:
 	@docker buildx build \
 	  --build-context binaries=$$(dirname $(BINARY_PATH_LICENSE_SERVER)) \
-	  --file ./docker/pc-license-server.Dockerfile \
+	  --file ./docker/polars-nanook-license-server.Dockerfile \
 	  --tag $(CONTAINER_IMAGE_LICENSE_SERVER) \
 	  .
 
@@ -50,13 +49,11 @@ test-docker-license-server: .venv
 
 test-subprocess: .venv
 	@source .venv/bin/activate && \
-	 BINARY_PATH=$(BINARY_PATH) \
 	 LICENSE_PATH=$(LICENSE_PATH) \
 	 pytest --verbose
 
 test-license-server-subprocess: .venv
 	@source .venv/bin/activate && \
-	 BINARY_PATH=$(BINARY_PATH) \
 	 BINARY_PATH_LICENSE_SERVER=$(BINARY_PATH_LICENSE_SERVER) \
 	 LICENSE_PATH=$(LICENSE_PATH) \
 	 TLS_BUNDLE_PATH=$(TLS_BUNDLE_PATH) \

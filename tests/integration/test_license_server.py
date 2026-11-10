@@ -43,8 +43,8 @@ def _read_reports(report_dir: pathlib.Path) -> list[dict]:
 
 
 # report.tick() only happens every report_interval which is hardcoded to 5 mins in
-# pc-license-server/src/main.rs; the first tick reflects an empty store, so wait
-# for one that actually reflects the registered cluster
+# license-server/src/main.rs; the first tick reflects an empty store, so wait for
+# one that actually reflects the registered cluster
 def _wait_for_report(report_dir: pathlib.Path) -> dict:
     timeout = 300 + 30  # give some room
 
